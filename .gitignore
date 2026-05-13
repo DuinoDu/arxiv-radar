@@ -39,7 +39,8 @@ yarn-error.log*
 /data/*.tmp
 
 # local agent runtime
-/.conductor/
+/.conductor/*
+!/.conductor/settings.yaml
 /conductor.log
 
 # vercel

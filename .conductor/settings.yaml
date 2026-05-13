@@ -1,0 +1,9 @@
+worktree:
+  sync_branch: false
+  symlink:
+    - .env
+    - data/arxiv-state.json
+  # Example: symlink paths from the parent workspace into each worktree
+  # symlink:
+  #   - node_modules
+  #   - .env
