@@ -14,5 +14,12 @@ export default async function Home({ searchParams }: { searchParams?: Promise<Se
   const params = await searchParams;
   const state = await readArxivState();
 
-  return <PaperDashboard initialFilter={parseTagFilter(params?.tag)} state={state} timeZone={TIME_ZONE} />;
+  return (
+    <PaperDashboard
+      disableManualRun={Boolean(process.env.CRON_SECRET)}
+      initialFilter={parseTagFilter(params?.tag)}
+      state={state}
+      timeZone={TIME_ZONE}
+    />
+  );
 }

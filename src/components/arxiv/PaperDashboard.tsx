@@ -261,10 +261,12 @@ function RecentRuns({ runs, timeZone }: { runs: ArxivState["runs"]; timeZone: st
 }
 
 export function PaperDashboard({
+  disableManualRun = false,
   initialFilter,
   state,
   timeZone,
 }: {
+  disableManualRun?: boolean;
   initialFilter: TagFilter;
   state: ArxivState;
   timeZone: string;
@@ -317,7 +319,7 @@ export function PaperDashboard({
 
             <div className="flex items-start gap-3">
               <ThemeToggle />
-              <RunAnalysisButton />
+              <RunAnalysisButton disabled={disableManualRun} />
             </div>
           </div>
 
