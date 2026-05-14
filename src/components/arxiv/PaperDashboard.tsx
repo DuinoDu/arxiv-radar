@@ -2,11 +2,12 @@
 
 import type { MouseEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, Cpu, Eye, FileText, History, MessageCircle, Tag } from "lucide-react";
+import { ChevronDown, Cpu, Eye, FileText, Heart, History, MessageCircle, Tag } from "lucide-react";
 import { parseTagFilter, tagLabels, type TagFilter } from "@/lib/arxiv/filters";
 import type { AnalyzedPaper, ArxivState, PaperTag, RunStatus } from "@/lib/arxiv/types";
 import { RunAnalysisButton } from "@/components/arxiv/RunAnalysisButton";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { useFavorites } from "@/lib/arxiv/useFavorites";
 
 const tagStyles: Record<PaperTag, string> = {
   egocentric:
@@ -180,7 +181,17 @@ function FilterLink({
   );
 }
 
-function PaperRow({ paper, timeZone }: { paper: AnalyzedPaper; timeZone: string }) {
+function PaperRow({
+  paper,
+  timeZone,
+  isFavorite,
+  onToggleFavorite,
+}: {
+  paper: AnalyzedPaper;
+  timeZone: string;
+  isFavorite: boolean;
+  onToggleFavorite: (id: string) => void;
+}) {
   const detailItems = [
     ["假设", paper.hypothesis],
     ["方法", paper.method],
@@ -232,6 +243,24 @@ function PaperRow({ paper, timeZone }: { paper: AnalyzedPaper; timeZone: string 
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={() => onToggleFavorite(paper.id)}
+            title={isFavorite ? "取消收藏" : "收藏"}
+            aria-label={`${paper.title} ${isFavorite ? "取消收藏" : "收藏"}`}
+            aria-pressed={isFavorite}
+            className={`inline-flex h-9 w-9 items-center justify-center rounded-md border transition ${
+              isFavorite
+                ? "border-rose-300 bg-rose-50 text-rose-600 hover:bg-rose-100 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-300 dark:hover:bg-rose-950"
+                : "border-zinc-200 text-zinc-700 hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-900"
+            }`}
+          >
+            <Heart
+              className="h-4 w-4"
+              aria-hidden="true"
+              fill={isFavorite ? "currentColor" : "none"}
+            />
+          </button>
           <a
             href={paperChatPath(paper)}
             title="chat"
@@ -324,16 +353,33 @@ export function PaperDashboard({
   timeZone: string;
 }) {
   const [activeFilter, setActiveFilter] = useState(initialFilter);
+  const { favorites, isFavorite, toggleFavorite } = useFavorites();
   const papers = state.papers;
   const lastRun = state.runs[0];
   const lastCompletedRun = state.runs.find((run) => run.status === "completed");
   const egocentricCount = useMemo(() => tagCount(papers, "egocentric"), [papers]);
   const hardwareCount = useMemo(() => tagCount(papers, "custom_hardware"), [papers]);
-  const visiblePapers = useMemo(
-    () => (activeFilter === "all" ? papers : papers.filter((paper) => paper.tags.includes(activeFilter))),
-    [activeFilter, papers],
+  const favoritesCount = useMemo(
+    () => papers.reduce((count, paper) => (favorites.has(paper.id) ? count + 1 : count), 0),
+    [favorites, papers],
   );
-  const listTitle = activeFilter === "all" ? "论文列表" : `${tagLabels[activeFilter]} 论文`;
+  const visiblePapers = useMemo(() => {
+    if (activeFilter === "all") {
+      return papers;
+    }
+
+    if (activeFilter === "favorites") {
+      return papers.filter((paper) => favorites.has(paper.id));
+    }
+
+    return papers.filter((paper) => paper.tags.includes(activeFilter));
+  }, [activeFilter, favorites, papers]);
+  const listTitle =
+    activeFilter === "all"
+      ? "论文列表"
+      : activeFilter === "favorites"
+        ? "收藏论文"
+        : `${tagLabels[activeFilter]} 论文`;
 
   useEffect(() => {
     function handlePopState() {
@@ -407,6 +453,20 @@ export function PaperDashboard({
               label="自建采集硬件"
               onSelect={selectFilter}
             />
+            <FilterLink
+              active={activeFilter === "favorites"}
+              count={favoritesCount}
+              filter="favorites"
+              icon={
+                <Heart
+                  className="h-4 w-4"
+                  aria-hidden="true"
+                  fill={activeFilter === "favorites" ? "currentColor" : "none"}
+                />
+              }
+              label="收藏"
+              onSelect={selectFilter}
+            />
           </nav>
         </div>
       </header>
@@ -421,7 +481,15 @@ export function PaperDashboard({
 
         <section className="space-y-2">
           {visiblePapers.length > 0 ? (
-            visiblePapers.map((paper) => <PaperRow key={paper.id} paper={paper} timeZone={timeZone} />)
+            visiblePapers.map((paper) => (
+              <PaperRow
+                key={paper.id}
+                paper={paper}
+                timeZone={timeZone}
+                isFavorite={isFavorite(paper.id)}
+                onToggleFavorite={toggleFavorite}
+              />
+            ))
           ) : (
             <div className="rounded-lg border border-dashed border-zinc-300 bg-white p-10 text-center dark:border-zinc-800 dark:bg-zinc-950">
               <History className="mx-auto h-8 w-8 text-zinc-400" aria-hidden="true" />
