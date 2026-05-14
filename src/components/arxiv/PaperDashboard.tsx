@@ -86,11 +86,45 @@ function MetricPill({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
-function TagBadge({ tag, evidence }: { tag: PaperTag; evidence?: string }) {
+function formatTagSource(source: AnalyzedPaper["tagSource"], tag: PaperTag) {
+  const value = source?.[tag];
+
+  if (!value) {
+    return undefined;
+  }
+
+  const labels = {
+    title: "标题",
+    abstract: "摘要",
+    full_text: "正文",
+  } as const;
+
+  return labels[value];
+}
+
+function TagBadge({
+  confidence,
+  evidence,
+  source,
+  tag,
+}: {
+  confidence?: number;
+  evidence?: string;
+  source?: string;
+  tag: PaperTag;
+}) {
+  const title = [
+    source ? `来源：${source}` : undefined,
+    typeof confidence === "number" ? `置信度：${Math.round(confidence * 100)}%` : undefined,
+    evidence,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${tagStyles[tag]}`}
-      title={evidence}
+      title={title || undefined}
     >
       <Tag className="h-3 w-3" aria-hidden="true" />
       {tagLabels[tag]}
@@ -174,7 +208,13 @@ function PaperRow({ paper, timeZone }: { paper: AnalyzedPaper; timeZone: string 
 
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {paper.tags.map((tag) => (
-              <TagBadge key={tag} tag={tag} evidence={paper.tagEvidence[tag]} />
+              <TagBadge
+                key={tag}
+                confidence={paper.tagConfidence?.[tag]}
+                evidence={paper.tagEvidence?.[tag]}
+                source={formatTagSource(paper.tagSource, tag)}
+                tag={tag}
+              />
             ))}
             <span className="break-words text-sm text-zinc-500 dark:text-zinc-400">{formatAuthors(paper.authors)}</span>
           </div>

@@ -2,6 +2,9 @@ export const PAPER_TAGS = ["egocentric", "custom_hardware"] as const;
 
 export type PaperTag = (typeof PAPER_TAGS)[number];
 
+export type PaperTagSource = "title" | "abstract" | "full_text";
+export type FullTextStatus = "available" | "unavailable" | "failed";
+
 export type RunStatus = "running" | "completed" | "failed";
 
 export interface ArxivArticle {
@@ -24,6 +27,12 @@ export interface AnalyzedPaper extends ArxivArticle {
   conclusion: string;
   tags: PaperTag[];
   tagEvidence: Partial<Record<PaperTag, string>>;
+  tagConfidence?: Partial<Record<PaperTag, number>>;
+  tagSource?: Partial<Record<PaperTag, PaperTagSource>>;
+  fullTextStatus?: FullTextStatus;
+  fullTextUrl?: string;
+  fullTextError?: string;
+  fullTextAnalyzedAt?: string;
   model: string;
   confidence?: number;
   analyzedAt: string;

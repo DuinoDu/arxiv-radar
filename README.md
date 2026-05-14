@@ -24,6 +24,8 @@ APP_URL=http://localhost:3000
 APP_TIME_ZONE=Asia/Shanghai
 ARXIV_LIMIT=100
 OPENAI_CONCURRENCY=3
+ARXIV_FULL_TEXT_MAX_CHARS=50000
+ARXIV_FULL_TEXT_TIMEOUT_MS=10000
 CRON_SECRET=...
 ARXIV_DATA_FILE_NAME=arxiv-state.json
 MAX_STORED_PAPERS=800
@@ -64,6 +66,8 @@ Authorization: Bearer $CRON_SECRET
 ```
 
 生产环境建议配置 `CRON_SECRET`；Vercel Cron 会自动带上该 header。启用后页面里的“立即分析”按钮会禁用，手动触发可在 Vercel Cron 面板执行，或请求 `/api/cron/arxiv?secret=$CRON_SECRET`。
+
+分析新论文时会优先抓取 `https://arxiv.org/html/{arxivId}` 的正文，交给 LLM 基于标题、摘要和正文语义判断 `egocentric` / `自建采集硬件` 标签；代码不再使用关键词规则兜底。正文不可用时会记录状态，并降级为 LLM 基于可用元数据判断。
 
 本地一次性触发：
 
