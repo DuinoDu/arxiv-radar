@@ -42,6 +42,7 @@ yarn-error.log*
 /.conductor/*
 !/.conductor/settings.yaml
 /conductor.log
+/conductor-terminal.log
 
 # vercel
 .vercel
