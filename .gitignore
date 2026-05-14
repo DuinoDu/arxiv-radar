@@ -37,6 +37,7 @@ yarn-error.log*
 # local app state
 /data/*.json
 /data/*.tmp
+/data/sessions/
 
 # local agent runtime
 /.conductor/*

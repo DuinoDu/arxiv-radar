@@ -16,7 +16,7 @@ export const PaperChatMessageSchema = z.object({
 });
 
 export const PaperChatRequestSchema = z.object({
-  messages: z.array(PaperChatMessageSchema).min(1).max(MAX_MESSAGES),
+  content: z.string().trim().min(1).max(6000),
 });
 
 export type PaperChatMessage = z.infer<typeof PaperChatMessageSchema>;

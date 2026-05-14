@@ -4,8 +4,6 @@ import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import { Send } from "lucide-react";
 import type { AnalyzedPaper } from "@/lib/arxiv/types";
 
-const MAX_MESSAGES_TO_SEND = 24;
-
 type ChatMessage = {
   role: "user" | "assistant";
   content: string;
@@ -13,6 +11,7 @@ type ChatMessage = {
 
 type ChatResponse = {
   message?: ChatMessage;
+  messages?: ChatMessage[];
   error?: string;
 };
 
@@ -21,13 +20,9 @@ function apiPath(paperId: string) {
 }
 
 export function PaperChat({ paper }: { paper: AnalyzedPaper }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      role: "assistant",
-      content: "可以开始了。",
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -36,9 +31,43 @@ export function PaperChat({ paper }: { paper: AnalyzedPaper }) {
     messagesEndRef.current?.scrollIntoView({ block: "end" });
   }, [messages, isSending]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadHistory() {
+      setIsLoadingHistory(true);
+      setError(undefined);
+
+      try {
+        const response = await fetch(apiPath(paper.id), {
+          signal: controller.signal,
+        });
+        const payload = (await response.json()) as ChatResponse;
+
+        if (!response.ok) {
+          throw new Error(payload.error || "Failed to load chat history");
+        }
+
+        setMessages(payload.messages ?? []);
+      } catch (requestError) {
+        if ((requestError as Error).name !== "AbortError") {
+          setError((requestError as Error).message);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoadingHistory(false);
+        }
+      }
+    }
+
+    void loadHistory();
+
+    return () => controller.abort();
+  }, [paper.id]);
+
   async function sendMessage() {
     const content = input.trim();
-    if (!content || isSending) {
+    if (!content || isSending || isLoadingHistory) {
       return;
     }
 
@@ -54,7 +83,7 @@ export function PaperChat({ paper }: { paper: AnalyzedPaper }) {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ messages: nextMessages.slice(-MAX_MESSAGES_TO_SEND) }),
+        body: JSON.stringify({ content }),
       });
       const payload = (await response.json()) as ChatResponse;
 
@@ -62,7 +91,7 @@ export function PaperChat({ paper }: { paper: AnalyzedPaper }) {
         throw new Error(payload.error || "Chat request failed");
       }
 
-      setMessages([...nextMessages, payload.message]);
+      setMessages(payload.messages ?? [...nextMessages, payload.message]);
     } catch (requestError) {
       setError((requestError as Error).message);
       setInput(content);
@@ -84,6 +113,16 @@ export function PaperChat({ paper }: { paper: AnalyzedPaper }) {
     }
   }
 
+  const visibleMessages =
+    messages.length > 0
+      ? messages
+      : [
+          {
+            role: "assistant" as const,
+            content: isLoadingHistory ? "加载中..." : "可以开始了。",
+          },
+        ];
+
   return (
     <section className="flex h-[calc(100vh-8rem)] min-h-[28rem] flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950 lg:h-full lg:min-h-0">
       <div className="flex h-11 items-center border-b border-zinc-200 px-3 dark:border-zinc-800">
@@ -91,7 +130,7 @@ export function PaperChat({ paper }: { paper: AnalyzedPaper }) {
       </div>
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3">
-        {messages.map((message, index) => (
+        {visibleMessages.map((message, index) => (
           <div
             key={`${message.role}-${index}`}
             className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
@@ -139,7 +178,7 @@ export function PaperChat({ paper }: { paper: AnalyzedPaper }) {
             type="submit"
             title="发送"
             aria-label="发送"
-            disabled={!input.trim() || isSending}
+            disabled={!input.trim() || isSending || isLoadingHistory}
             className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-zinc-950 text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200"
           >
             <Send className="h-4 w-4" aria-hidden="true" />
