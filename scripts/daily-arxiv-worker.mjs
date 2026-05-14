@@ -1,5 +1,5 @@
 const timeZone = process.env.APP_TIME_ZONE || "Asia/Shanghai";
-const runAtHour = Number(process.env.ARXIV_RUN_HOUR || 0);
+const runAtHour = Number(process.env.ARXIV_RUN_HOUR || 2);
 const runAtMinute = Number(process.env.ARXIV_RUN_MINUTE || 0);
 const baseUrl = process.env.APP_URL || "http://localhost:3000";
 const cronSecret = process.env.CRON_SECRET;

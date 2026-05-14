@@ -59,13 +59,13 @@ Authorization: Bearer $CRON_SECRET
 npm run cron
 ```
 
-本地常驻 worker，每天 00:00 `APP_TIME_ZONE` 触发：
+本地常驻 worker，每天 02:00 `APP_TIME_ZONE` 触发：
 
 ```bash
 npm run worker
 ```
 
-Vercel 部署时，`vercel.json` 已配置 `0 16 * * *`，对应北京时间每天 00:00。
+Vercel 部署时，`vercel.json` 已配置 `0 18 * * *`，对应北京时间每天 02:00。
 
 ## 数据存储
 
