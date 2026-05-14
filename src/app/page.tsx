@@ -284,7 +284,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<Se
 
             <div className="flex items-start gap-3">
               <ThemeToggle />
-              <RunAnalysisButton />
+              <RunAnalysisButton disabled={Boolean(process.env.CRON_SECRET)} />
             </div>
           </div>
 
