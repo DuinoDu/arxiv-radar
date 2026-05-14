@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ChevronDown, Cpu, Eye, FileText, History, Tag } from "lucide-react";
+import { ChevronDown, Cpu, Eye, FileText, History, MessageCircle, Tag } from "lucide-react";
 import { RunAnalysisButton } from "@/components/arxiv/RunAnalysisButton";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { readArxivState } from "@/lib/arxiv/store";
@@ -77,6 +77,10 @@ function tagCount(papers: AnalyzedPaper[], tag: PaperTag) {
 
 function arxivHtmlUrl(paper: AnalyzedPaper) {
   return `https://arxiv.org/html/${paper.id}`;
+}
+
+function paperChatPath(paper: AnalyzedPaper) {
+  return `/papers/${encodeURIComponent(paper.id)}/chat`;
 }
 
 function MetricPill({ label, value }: { label: string; value: ReactNode }) {
@@ -184,6 +188,14 @@ function PaperRow({ paper }: { paper: AnalyzedPaper }) {
 
         <div className="flex shrink-0 items-center gap-1">
           <Link
+            href={paperChatPath(paper)}
+            title="chat"
+            aria-label={`${paper.title} chat`}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-900"
+          >
+            <MessageCircle className="h-4 w-4" aria-hidden="true" />
+          </Link>
+          <Link
             href={arxivHtmlUrl(paper)}
             target="_blank"
             title="HTML 正文"
@@ -219,6 +231,7 @@ function PaperRow({ paper }: { paper: AnalyzedPaper }) {
               {paper.abstract}
             </p>
           </details>
+
         </div>
       </details>
     </article>
