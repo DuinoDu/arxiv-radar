@@ -2,7 +2,7 @@
 
 import type { MouseEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, Cpu, Eye, FileText, History, Tag } from "lucide-react";
+import { ChevronDown, Cpu, Eye, FileText, History, MessageCircle, Tag } from "lucide-react";
 import { parseTagFilter, tagLabels, type TagFilter } from "@/lib/arxiv/filters";
 import type { AnalyzedPaper, ArxivState, PaperTag, RunStatus } from "@/lib/arxiv/types";
 import { RunAnalysisButton } from "@/components/arxiv/RunAnalysisButton";
@@ -54,6 +54,10 @@ function tagCount(papers: AnalyzedPaper[], tag: PaperTag) {
 
 function arxivHtmlUrl(paper: AnalyzedPaper) {
   return `https://arxiv.org/html/${paper.id}`;
+}
+
+function paperChatPath(paper: AnalyzedPaper) {
+  return `/papers/${encodeURIComponent(paper.id)}/chat`;
 }
 
 function filterHref(filter: TagFilter) {
@@ -188,6 +192,14 @@ function PaperRow({ paper, timeZone }: { paper: AnalyzedPaper; timeZone: string 
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
+          <a
+            href={paperChatPath(paper)}
+            title="chat"
+            aria-label={`${paper.title} chat`}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-900"
+          >
+            <MessageCircle className="h-4 w-4" aria-hidden="true" />
+          </a>
           <a
             href={arxivHtmlUrl(paper)}
             target="_blank"
