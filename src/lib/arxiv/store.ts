@@ -66,6 +66,7 @@ function createEmptyState(): ArxivState {
     version: STATE_VERSION,
     updatedAt: new Date(0).toISOString(),
     processedArticleIds: [],
+    favoriteIds: [],
     papers: [],
     runs: [],
   };
@@ -78,6 +79,9 @@ function normalizeState(parsed: Partial<ArxivState>): ArxivState {
     processedArticleIds: Array.isArray(parsed.processedArticleIds)
       ? parsed.processedArticleIds
       : [],
+    favoriteIds: Array.isArray(parsed.favoriteIds)
+      ? parsed.favoriteIds.filter((id): id is string => typeof id === "string")
+      : [],
     papers: Array.isArray(parsed.papers) ? parsed.papers : [],
     runs: Array.isArray(parsed.runs) ? parsed.runs : [],
   };
@@ -89,6 +93,7 @@ function prepareStateForWrite(state: ArxivState): ArxivState {
     version: STATE_VERSION,
     updatedAt: new Date().toISOString(),
     processedArticleIds: Array.from(new Set(state.processedArticleIds)),
+    favoriteIds: Array.from(new Set(state.favoriteIds)),
     papers: state.papers.slice(0, MAX_STORED_PAPERS),
     runs: state.runs.slice(0, MAX_RUNS),
   };
@@ -219,6 +224,37 @@ export async function upsertRun(run: AnalysisRun) {
     ...state,
     runs: [run, ...state.runs.filter((existingRun) => existingRun.id !== run.id)],
   }));
+}
+
+export async function readFavoriteIds(): Promise<string[]> {
+  const state = await readArxivState();
+  return state.favoriteIds;
+}
+
+export async function addFavoriteId(id: string) {
+  await mutateArxivState((state) => {
+    if (state.favoriteIds.includes(id)) {
+      return state;
+    }
+
+    return {
+      ...state,
+      favoriteIds: [...state.favoriteIds, id],
+    };
+  });
+}
+
+export async function removeFavoriteId(id: string) {
+  await mutateArxivState((state) => {
+    if (!state.favoriteIds.includes(id)) {
+      return state;
+    }
+
+    return {
+      ...state,
+      favoriteIds: state.favoriteIds.filter((existing) => existing !== id),
+    };
+  });
 }
 
 export async function addManualPaper(paper: AnalyzedPaper) {
