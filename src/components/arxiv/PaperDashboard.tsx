@@ -200,12 +200,14 @@ function PaperRow({
   isFavorite,
   highlighted,
   onToggleFavorite,
+  onChatStart,
 }: {
   paper: AnalyzedPaper;
   timeZone: string;
   isFavorite: boolean;
   highlighted: boolean;
   onToggleFavorite: (id: string) => void;
+  onChatStart: (id: string) => void;
 }) {
   const detailItems = [
     ["假设", paper.hypothesis],
@@ -285,6 +287,7 @@ function PaperRow({
           </button>
           <a
             href={paperChatPath(paper)}
+            onClick={() => onChatStart(paper.id)}
             title="chat"
             aria-label={`${paper.title} chat`}
             className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-900"
@@ -376,7 +379,7 @@ export function PaperDashboard({
 }) {
   const [activeFilter, setActiveFilter] = useState(initialFilter);
   const [focusedPaperId, setFocusedPaperId] = useState<string | null>(null);
-  const { favorites, isFavorite, toggleFavorite } = useFavorites();
+  const { favorites, isFavorite, toggleFavorite, addFavorite } = useFavorites();
   const papers = state.papers;
   const lastRun = state.runs[0];
   const lastCompletedRun = state.runs.find((run) => run.status === "completed");
@@ -571,6 +574,7 @@ export function PaperDashboard({
                 isFavorite={isFavorite(paper.id)}
                 highlighted={focusedPaperId === paper.id}
                 onToggleFavorite={toggleFavorite}
+                onChatStart={addFavorite}
               />
             ))
           ) : (
