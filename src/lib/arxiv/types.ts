@@ -64,6 +64,7 @@ export interface ArxivState {
   version: 1;
   updatedAt: string;
   processedArticleIds: string[];
+  favoriteIds: string[];
   papers: AnalyzedPaper[];
   runs: AnalysisRun[];
 }
