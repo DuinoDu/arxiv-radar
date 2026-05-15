@@ -9,7 +9,11 @@ import { useFavorites } from "@/lib/arxiv/useFavorites";
 
 type SubmitState = "idle" | "submitting" | "done" | "error";
 
-export function ManualAddButton() {
+export function ManualAddButton({
+  onPaperExists,
+}: {
+  onPaperExists?: (id: string) => void;
+}) {
   const router = useRouter();
   const { addFavorite } = useFavorites();
   const [open, setOpen] = useState(false);
@@ -86,6 +90,15 @@ export function ManualAddButton() {
         }),
       });
       const payload = await response.json();
+
+      // 论文已存在：自动收藏 + 关闭 modal + 让 dashboard 滚动并高亮
+      if (response.status === 409 && payload.paperId) {
+        addFavorite(payload.paperId);
+        onPaperExists?.(payload.paperId);
+        setOpen(false);
+        resetForm();
+        return;
+      }
 
       if (!response.ok || !payload.ok) {
         throw new Error(payload.error || "添加失败");
