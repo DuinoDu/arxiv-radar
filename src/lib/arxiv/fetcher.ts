@@ -13,11 +13,24 @@ function normalizeText(value: string) {
 }
 
 export function normalizeArxivId(value: string) {
-  return value
-    .replace(/^https?:\/\/arxiv\.org\/abs\//, "")
+  const trimmed = value.trim();
+
+  // 形如 2605.12182 / 2605.12182v3 / cs/0501001
+  const modernMatch = trimmed.match(/(\d{4}\.\d{4,6})(v\d+)?/);
+  if (modernMatch) {
+    return modernMatch[1];
+  }
+
+  const legacyMatch = trimmed.match(/([a-z\-]+(?:\.[A-Z]{2})?\/\d{7})(v\d+)?/i);
+  if (legacyMatch) {
+    return legacyMatch[1];
+  }
+
+  return trimmed
+    .replace(/^https?:\/\/(?:export\.)?arxiv\.org\/(?:abs|pdf|html|format)\//, "")
+    .replace(/\.pdf$/i, "")
     .replace(/^arXiv:/i, "")
-    .replace(/v\d+$/i, "")
-    .trim();
+    .replace(/v\d+$/i, "");
 }
 
 function unique<T>(items: T[]) {

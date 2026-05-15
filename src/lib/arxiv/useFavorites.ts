@@ -102,5 +102,18 @@ export function useFavorites() {
     [favorites],
   );
 
-  return { favorites, isFavorite, toggleFavorite };
+  const addFavorite = useCallback(
+    (id: string) => {
+      if (favorites.has(id)) {
+        return;
+      }
+
+      const next = new Set(favorites);
+      next.add(id);
+      writeToStorage(Array.from(next));
+    },
+    [favorites],
+  );
+
+  return { favorites, isFavorite, toggleFavorite, addFavorite };
 }

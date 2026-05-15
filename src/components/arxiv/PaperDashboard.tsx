@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, Cpu, Eye, FileText, Heart, History, MessageCircle, Tag } from "lucide-react";
 import { parseTagFilter, tagLabels, type TagFilter } from "@/lib/arxiv/filters";
 import type { AnalyzedPaper, ArxivState, PaperTag, RunStatus } from "@/lib/arxiv/types";
+import { ManualAddButton } from "@/components/arxiv/ManualAddButton";
 import { RunAnalysisButton } from "@/components/arxiv/RunAnalysisButton";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { useFavorites } from "@/lib/arxiv/useFavorites";
@@ -417,6 +418,7 @@ export function PaperDashboard({
 
             <div className="flex items-start gap-3">
               <ThemeToggle />
+              <ManualAddButton />
               <RunAnalysisButton disabled={disableManualRun} />
             </div>
           </div>
