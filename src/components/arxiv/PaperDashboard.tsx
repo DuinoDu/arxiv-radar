@@ -409,19 +409,21 @@ function PaperRow({
                 )}
               </div>
             )}
-            <span className="break-words text-sm text-zinc-500 dark:text-zinc-400">{formatAuthors(paper.authors)}</span>
+            <span className="hidden break-words text-sm text-zinc-500 md:inline dark:text-zinc-400">{formatAuthors(paper.authors)}</span>
           </div>
 
-          <p
-            className="mt-2 overflow-hidden break-words text-sm leading-6 text-zinc-700 dark:text-zinc-300"
-            style={{
-              display: "-webkit-box",
-              WebkitBoxOrient: "vertical",
-              WebkitLineClamp: 2,
-            }}
-          >
-            {paper.summary}
-          </p>
+          <div className="mt-2 hidden md:block">
+            <p
+              className="overflow-hidden break-words text-sm leading-6 text-zinc-700 dark:text-zinc-300"
+              style={{
+                display: "-webkit-box",
+                WebkitBoxOrient: "vertical",
+                WebkitLineClamp: 2,
+              }}
+            >
+              {paper.summary}
+            </p>
+          </div>
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
@@ -474,6 +476,21 @@ function PaperRow({
         </summary>
 
         <div className="mt-3 space-y-4">
+          <div className="space-y-3 md:hidden">
+            <div className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
+              <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">作者</div>
+              <p className="mt-1 break-words text-sm leading-6 text-zinc-800 dark:text-zinc-200">
+                {formatAuthors(paper.authors)}
+              </p>
+            </div>
+            <div className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
+              <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">简述</div>
+              <p className="mt-1 break-words text-sm leading-6 text-zinc-800 dark:text-zinc-200">
+                {paper.summary}
+              </p>
+            </div>
+          </div>
+
           <dl className="grid gap-3 md:grid-cols-2">
             {detailItems.map(([label, value]) => (
               <div key={label} className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
