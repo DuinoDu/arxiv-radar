@@ -1,8 +1,8 @@
 "use client";
 
 import type { MouseEvent, ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
-import { BrainCircuit, ChevronDown, Cpu, Eye, FileText, Heart, History, MessageCircle, Tag, Workflow } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BrainCircuit, ChevronDown, Cpu, Eye, FileText, Heart, History, MessageCircle, Plus, Tag, Workflow, X } from "lucide-react";
 import { parseTagFilter, tagLabels, type TagFilter } from "@/lib/arxiv/filters";
 import { PAPER_TAGS, type AnalyzedPaper, type ArxivState, type PaperTag, type RunStatus } from "@/lib/arxiv/types";
 import { ManualAddButton } from "@/components/arxiv/ManualAddButton";
@@ -142,6 +142,136 @@ function TagBadge({
   );
 }
 
+function EditableTagList({
+  tags,
+  onChange,
+  onDone,
+}: {
+  tags: PaperTag[];
+  onChange: (next: PaperTag[]) => void;
+  onDone: () => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [addOpen, setAddOpen] = useState(false);
+
+  useEffect(() => {
+    function handlePointerDown(event: PointerEvent) {
+      const container = containerRef.current;
+      if (!container) {
+        return;
+      }
+
+      if (container.contains(event.target as Node)) {
+        return;
+      }
+
+      onDone();
+    }
+
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onDone();
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [onDone]);
+
+  const usedSet = new Set(tags);
+  const unusedTags = PAPER_TAGS.filter((tag) => !usedSet.has(tag));
+  // Keep canonical order so the row doesn't visibly shuffle on each toggle.
+  const orderedTags = PAPER_TAGS.filter((tag) => usedSet.has(tag));
+
+  function removeTag(tag: PaperTag) {
+    onChange(orderedTags.filter((existing) => existing !== tag));
+  }
+
+  function addTag(tag: PaperTag) {
+    const next = PAPER_TAGS.filter((candidate) => usedSet.has(candidate) || candidate === tag);
+    onChange(next);
+    setAddOpen(false);
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      role="group"
+      aria-label="编辑标签"
+      className="flex flex-wrap items-center gap-2 rounded-md bg-zinc-50/70 px-1.5 py-1 ring-1 ring-inset ring-zinc-200 dark:bg-zinc-900/40 dark:ring-zinc-800"
+    >
+      {orderedTags.length === 0 ? (
+        <span className="select-none text-xs text-zinc-500 dark:text-zinc-400">
+          暂无标签，点击右侧 + 添加
+        </span>
+      ) : (
+        orderedTags.map((tag) => (
+          <span
+            key={tag}
+            className={`inline-flex -translate-y-px items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium shadow-md transition ${tagStyles[tag]}`}
+          >
+            <Tag className="h-3 w-3" aria-hidden="true" />
+            {tagLabels[tag]}
+            <button
+              type="button"
+              onClick={() => removeTag(tag)}
+              aria-label={`删除标签 ${tagLabels[tag]}`}
+              title={`删除 ${tagLabels[tag]}`}
+              className="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full text-current opacity-70 transition hover:bg-black/10 hover:opacity-100 dark:hover:bg-white/15"
+            >
+              <X className="h-3 w-3" aria-hidden="true" />
+            </button>
+          </span>
+        ))
+      )}
+
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => {
+            if (unusedTags.length === 0) {
+              return;
+            }
+            setAddOpen((prev) => !prev);
+          }}
+          disabled={unusedTags.length === 0}
+          aria-haspopup="menu"
+          aria-expanded={addOpen}
+          aria-label="添加标签"
+          title={unusedTags.length === 0 ? "已添加全部标签" : "添加标签"}
+          className="inline-flex h-6 w-6 -translate-y-px items-center justify-center rounded-full border border-dashed border-zinc-300 bg-white text-zinc-500 shadow-sm transition hover:border-zinc-500 hover:bg-zinc-50 hover:text-zinc-800 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-400 dark:hover:border-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-white"
+        >
+          <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+        </button>
+
+        {addOpen && unusedTags.length > 0 ? (
+          <div
+            role="menu"
+            className="absolute left-0 top-full z-20 mt-1 flex min-w-[10rem] flex-col gap-0.5 rounded-md border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-950"
+          >
+            {unusedTags.map((tag) => (
+              <button
+                key={tag}
+                type="button"
+                role="menuitem"
+                onClick={() => addTag(tag)}
+                className="inline-flex items-center gap-2 rounded px-2 py-1 text-left text-xs text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-900"
+              >
+                <Tag className="h-3 w-3" aria-hidden="true" />
+                {tagLabels[tag]}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function FilterLink({
   active,
   count,
@@ -199,15 +329,23 @@ function PaperRow({
   timeZone,
   isFavorite,
   highlighted,
+  isEditingTags,
   onToggleFavorite,
   onChatStart,
+  onStartTagEdit,
+  onCancelTagEdit,
+  onTagsChange,
 }: {
   paper: AnalyzedPaper;
   timeZone: string;
   isFavorite: boolean;
   highlighted: boolean;
+  isEditingTags: boolean;
   onToggleFavorite: (id: string) => void;
   onChatStart: (id: string) => void;
+  onStartTagEdit: (id: string) => void;
+  onCancelTagEdit: () => void;
+  onTagsChange: (id: string, tags: PaperTag[]) => void;
 }) {
   const detailItems = [
     ["假设", paper.hypothesis],
@@ -242,15 +380,35 @@ function PaperRow({
           </h2>
 
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            {paper.tags.map((tag) => (
-              <TagBadge
-                key={tag}
-                confidence={paper.tagConfidence?.[tag]}
-                evidence={paper.tagEvidence?.[tag]}
-                source={formatTagSource(paper.tagSource, tag)}
-                tag={tag}
+            {isEditingTags ? (
+              <EditableTagList
+                tags={paper.tags}
+                onChange={(next) => onTagsChange(paper.id, next)}
+                onDone={onCancelTagEdit}
               />
-            ))}
+            ) : (
+              <div
+                onDoubleClick={() => onStartTagEdit(paper.id)}
+                title="双击编辑标签"
+                className="flex flex-wrap items-center gap-2"
+              >
+                {paper.tags.length === 0 ? (
+                  <span className="select-none rounded-full border border-dashed border-zinc-300 px-2 py-0.5 text-xs text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+                    双击添加标签
+                  </span>
+                ) : (
+                  paper.tags.map((tag) => (
+                    <TagBadge
+                      key={tag}
+                      confidence={paper.tagConfidence?.[tag]}
+                      evidence={paper.tagEvidence?.[tag]}
+                      source={formatTagSource(paper.tagSource, tag)}
+                      tag={tag}
+                    />
+                  ))
+                )}
+              </div>
+            )}
             <span className="break-words text-sm text-zinc-500 dark:text-zinc-400">{formatAuthors(paper.authors)}</span>
           </div>
 
@@ -287,6 +445,8 @@ function PaperRow({
           </button>
           <a
             href={paperChatPath(paper)}
+            target="_blank"
+            rel="noreferrer"
             onClick={() => onChatStart(paper.id)}
             title="chat"
             aria-label={`${paper.title} chat`}
@@ -379,8 +539,64 @@ export function PaperDashboard({
 }) {
   const [activeFilter, setActiveFilter] = useState(initialFilter);
   const [focusedPaperId, setFocusedPaperId] = useState<string | null>(null);
+  const [editingPaperId, setEditingPaperId] = useState<string | null>(null);
+  const [papers, setPapers] = useState<AnalyzedPaper[]>(state.papers);
+  const [papersSource, setPapersSource] = useState<AnalyzedPaper[]>(state.papers);
   const { favorites, isFavorite, toggleFavorite, addFavorite } = useFavorites();
-  const papers = state.papers;
+
+  // Re-sync from server-provided prop when it changes (router.refresh, navigation, etc.).
+  // Adjusting state during render is the React-19 endorsed pattern over useEffect.
+  if (papersSource !== state.papers) {
+    setPapersSource(state.papers);
+    setPapers(state.papers);
+  }
+
+  const handleStartTagEdit = useCallback((paperId: string) => {
+    setEditingPaperId(paperId);
+  }, []);
+
+  const handleCancelTagEdit = useCallback(() => {
+    setEditingPaperId(null);
+  }, []);
+
+  const handleTagsChange = useCallback((paperId: string, nextTags: PaperTag[]) => {
+    let previousTags: PaperTag[] | null = null;
+
+    setPapers((prev) =>
+      prev.map((paper) => {
+        if (paper.id !== paperId) {
+          return paper;
+        }
+
+        previousTags = paper.tags;
+        return { ...paper, tags: nextTags };
+      }),
+    );
+
+    void fetch(`/api/papers/${encodeURIComponent(paperId)}/tags`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tags: nextTags }),
+    })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({ ok: false }));
+        if (!response.ok || !payload?.ok) {
+          throw new Error(payload?.error || "更新标签失败");
+        }
+      })
+      .catch((error) => {
+        console.error("update paper tags failed", error);
+        if (previousTags) {
+          const tagsToRestore = previousTags;
+          setPapers((prev) =>
+            prev.map((paper) =>
+              paper.id === paperId ? { ...paper, tags: tagsToRestore } : paper,
+            ),
+          );
+        }
+      });
+  }, []);
+
   const lastRun = state.runs[0];
   const lastCompletedRun = state.runs.find((run) => run.status === "completed");
   const countsByTag = useMemo(() => tagCounts(papers), [papers]);
@@ -573,8 +789,12 @@ export function PaperDashboard({
                 timeZone={timeZone}
                 isFavorite={isFavorite(paper.id)}
                 highlighted={focusedPaperId === paper.id}
+                isEditingTags={editingPaperId === paper.id}
                 onToggleFavorite={toggleFavorite}
                 onChatStart={addFavorite}
+                onStartTagEdit={handleStartTagEdit}
+                onCancelTagEdit={handleCancelTagEdit}
+                onTagsChange={handleTagsChange}
               />
             ))
           ) : (
