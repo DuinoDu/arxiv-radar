@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AlertCircle, CheckCircle2, Loader2, Plus, X } from "lucide-react";
 import { PAPER_TAGS, type PaperTag } from "@/lib/arxiv/types";
 import { tagLabels } from "@/lib/arxiv/filters";
@@ -17,11 +18,16 @@ export function ManualAddButton({
   const router = useRouter();
   const { addFavorite } = useFavorites();
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [input, setInput] = useState("");
   const [tags, setTags] = useState<Set<PaperTag>>(new Set());
   const [state, setState] = useState<SubmitState>("idle");
   const [message, setMessage] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!open) {
@@ -133,14 +139,15 @@ export function ManualAddButton({
         <Plus className="h-4 w-4" aria-hidden="true" />
       </button>
 
-      {open ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="manual-add-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          onClick={closeDialog}
-        >
+      {open && mounted
+        ? createPortal(
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="manual-add-title"
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+              onClick={closeDialog}
+            >
           <div
             className="w-full max-w-md rounded-lg border border-zinc-200 bg-white p-5 shadow-xl dark:border-zinc-800 dark:bg-zinc-950"
             onClick={(event) => event.stopPropagation()}
@@ -262,8 +269,10 @@ export function ManualAddButton({
               </button>
             </div>
           </div>
-        </div>
-      ) : null}
+        </div>,
+            document.body,
+          )
+        : null}
     </>
   );
 }
