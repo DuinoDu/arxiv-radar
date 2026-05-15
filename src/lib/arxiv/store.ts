@@ -6,7 +6,14 @@ import {
 } from "@vercel/blob";
 import { promises as fs } from "fs";
 import path from "path";
-import type { AnalysisRun, AnalyzedPaper, ArxivState } from "./types";
+import {
+  PAPER_TAGS,
+  type AnalysisRun,
+  type AnalyzedPaper,
+  type ArxivState,
+  type PaperTag,
+  type PaperTagSource,
+} from "./types";
 
 const STATE_VERSION = 1;
 const DEFAULT_STORE_FILE_NAME = "arxiv-state.json";
@@ -253,6 +260,56 @@ export async function removeFavoriteId(id: string) {
     return {
       ...state,
       favoriteIds: state.favoriteIds.filter((existing) => existing !== id),
+    };
+  });
+}
+
+export async function updatePaperTags(id: string, tags: PaperTag[]) {
+  await mutateArxivState((state) => {
+    const paperIndex = state.papers.findIndex((paper) => paper.id === id);
+    if (paperIndex === -1) {
+      return state;
+    }
+
+    const paper = state.papers[paperIndex];
+    const nextTagSet = new Set(tags);
+    const previousTagSet = new Set(paper.tags);
+    // Keep canonical PAPER_TAGS ordering for stable UI
+    const nextTags = PAPER_TAGS.filter((tag) => nextTagSet.has(tag));
+
+    const tagEvidence: Partial<Record<PaperTag, string>> = { ...paper.tagEvidence };
+    const tagConfidence: Partial<Record<PaperTag, number>> = { ...(paper.tagConfidence ?? {}) };
+    const tagSource: Partial<Record<PaperTag, PaperTagSource>> = { ...(paper.tagSource ?? {}) };
+
+    for (const tag of PAPER_TAGS) {
+      if (!nextTagSet.has(tag)) {
+        delete tagEvidence[tag];
+        delete tagConfidence[tag];
+        delete tagSource[tag];
+        continue;
+      }
+
+      if (!previousTagSet.has(tag)) {
+        tagEvidence[tag] = tagEvidence[tag] || "用户手动添加";
+        tagConfidence[tag] = tagConfidence[tag] ?? 1;
+        tagSource[tag] = tagSource[tag] ?? "abstract";
+      }
+    }
+
+    const nextPaper: AnalyzedPaper = {
+      ...paper,
+      tags: nextTags,
+      tagEvidence,
+      tagConfidence,
+      tagSource,
+    };
+
+    const nextPapers = [...state.papers];
+    nextPapers[paperIndex] = nextPaper;
+
+    return {
+      ...state,
+      papers: nextPapers,
     };
   });
 }
