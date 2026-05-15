@@ -2,7 +2,19 @@
 
 import type { MouseEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { BrainCircuit, ChevronDown, Cpu, Eye, FileText, Heart, History, MessageCircle, Tag, Workflow } from "lucide-react";
+import {
+  Bot,
+  BrainCircuit,
+  ChevronDown,
+  Eye,
+  FileText,
+  Glasses,
+  Heart,
+  History,
+  MessageCircle,
+  Tag,
+  Workflow,
+} from "lucide-react";
 import { parseTagFilter, tagLabels, type TagFilter } from "@/lib/arxiv/filters";
 import { PAPER_TAGS, type AnalyzedPaper, type ArxivState, type PaperTag, type RunStatus } from "@/lib/arxiv/types";
 import { ManualAddButton } from "@/components/arxiv/ManualAddButton";
@@ -10,15 +22,19 @@ import { RunAnalysisButton } from "@/components/arxiv/RunAnalysisButton";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { useFavorites } from "@/lib/arxiv/useFavorites";
 
+const paperTagSet = new Set<string>(PAPER_TAGS);
+
 const tagStyles: Record<PaperTag, string> = {
   egocentric:
     "border-cyan-200 bg-cyan-50 text-cyan-800 dark:border-cyan-900 dark:bg-cyan-950/50 dark:text-cyan-200",
-  custom_hardware:
-    "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-200",
   vla:
     "border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-900 dark:bg-violet-950/50 dark:text-violet-200",
   world_model:
     "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-200",
+  so101:
+    "border-lime-200 bg-lime-50 text-lime-800 dark:border-lime-900 dark:bg-lime-950/50 dark:text-lime-200",
+  vr:
+    "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-800 dark:border-fuchsia-900 dark:bg-fuchsia-950/50 dark:text-fuchsia-200",
 };
 
 const statusLabels: Record<RunStatus, string> = {
@@ -60,6 +76,10 @@ function tagCount(papers: AnalyzedPaper[], tag: PaperTag) {
 
 function tagCounts(papers: AnalyzedPaper[]) {
   return Object.fromEntries(PAPER_TAGS.map((tag) => [tag, tagCount(papers, tag)])) as Record<PaperTag, number>;
+}
+
+function knownPaperTags(tags: readonly string[]) {
+  return tags.filter((tag): tag is PaperTag => paperTagSet.has(tag));
 }
 
 function arxivHtmlUrl(paper: AnalyzedPaper) {
@@ -242,7 +262,7 @@ function PaperRow({
           </h2>
 
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            {paper.tags.map((tag) => (
+            {knownPaperTags(paper.tags).map((tag) => (
               <TagBadge
                 key={tag}
                 confidence={paper.tagConfidence?.[tag]}
@@ -515,14 +535,6 @@ export function PaperDashboard({
               onSelect={selectFilter}
             />
             <FilterLink
-              active={activeFilter === "custom_hardware"}
-              count={countsByTag.custom_hardware}
-              filter="custom_hardware"
-              icon={<Cpu className="h-4 w-4" aria-hidden="true" />}
-              label="自建采集硬件"
-              onSelect={selectFilter}
-            />
-            <FilterLink
               active={activeFilter === "vla"}
               count={countsByTag.vla}
               filter="vla"
@@ -536,6 +548,22 @@ export function PaperDashboard({
               filter="world_model"
               icon={<BrainCircuit className="h-4 w-4" aria-hidden="true" />}
               label="WM"
+              onSelect={selectFilter}
+            />
+            <FilterLink
+              active={activeFilter === "so101"}
+              count={countsByTag.so101}
+              filter="so101"
+              icon={<Bot className="h-4 w-4" aria-hidden="true" />}
+              label="SO101"
+              onSelect={selectFilter}
+            />
+            <FilterLink
+              active={activeFilter === "vr"}
+              count={countsByTag.vr}
+              filter="vr"
+              icon={<Glasses className="h-4 w-4" aria-hidden="true" />}
+              label="VR"
               onSelect={selectFilter}
             />
             <FilterLink

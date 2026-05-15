@@ -1,4 +1,4 @@
-export const PAPER_TAGS = ["egocentric", "custom_hardware", "vla", "world_model"] as const;
+export const PAPER_TAGS = ["egocentric", "vla", "world_model", "so101", "vr"] as const;
 
 export type PaperTag = (typeof PAPER_TAGS)[number];
 
@@ -72,6 +72,7 @@ export interface ArxivState {
 export interface RunArxivAnalysisOptions {
   limit?: number;
   force?: boolean;
+  reanalyzeExisting?: boolean;
   sourceUrl?: string;
 }
 

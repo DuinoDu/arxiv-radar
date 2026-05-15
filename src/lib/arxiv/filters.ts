@@ -4,9 +4,10 @@ export type TagFilter = PaperTag | "all" | "favorites";
 
 export const tagLabels: Record<PaperTag, string> = {
   egocentric: "egocentric",
-  custom_hardware: "自建采集硬件",
   vla: "VLA",
   world_model: "WM",
+  so101: "SO101",
+  vr: "VR",
 };
 
 export function parseTagFilter(tag?: string | string[] | null): TagFilter {
@@ -14,9 +15,10 @@ export function parseTagFilter(tag?: string | string[] | null): TagFilter {
 
   if (
     value === "egocentric" ||
-    value === "custom_hardware" ||
     value === "vla" ||
     value === "world_model" ||
+    value === "so101" ||
+    value === "vr" ||
     value === "favorites"
   ) {
     return value;

@@ -24,9 +24,12 @@ async function handle(request: NextRequest) {
 
   const limit = Number(request.nextUrl.searchParams.get("limit") || 100);
   const force = request.nextUrl.searchParams.get("force") === "1";
+  const reanalyzeExisting =
+    request.nextUrl.searchParams.get("reanalyze") === "existing" ||
+    request.nextUrl.searchParams.get("existing") === "1";
 
   try {
-    const result = await runArxivAnalysis({ limit, force });
+    const result = await runArxivAnalysis({ limit, force, reanalyzeExisting });
     return NextResponse.json({
       ok: true,
       run: result.run,

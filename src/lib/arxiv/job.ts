@@ -9,6 +9,7 @@ import type {
 } from "./types";
 
 const DEFAULT_LIMIT = 100;
+const EXISTING_PAPERS_SOURCE = "local:existing-papers";
 
 let activeRun: Promise<RunArxivAnalysisResult> | undefined;
 
@@ -66,7 +67,9 @@ async function runArxivAnalysisInternal(
   options: RunArxivAnalysisOptions = {},
 ): Promise<RunArxivAnalysisResult> {
   const limit = toLimit(options.limit);
-  const sourceUrl = options.sourceUrl || ARXIV_RECENT_URL;
+  const sourceUrl = options.reanalyzeExisting
+    ? EXISTING_PAPERS_SOURCE
+    : options.sourceUrl || ARXIV_RECENT_URL;
   let run = createInitialRun(sourceUrl);
 
   await upsertRun(run);
@@ -74,13 +77,19 @@ async function runArxivAnalysisInternal(
   try {
     const state = await readArxivState();
     const processedIds = new Set(state.processedArticleIds);
-    const recentIds = await fetchRecentArticleIds(sourceUrl, limit);
-    const articles = await fetchArticleMetadata(recentIds);
-    const { articlesToAnalyze, skippedIds } = selectNewArticles(
-      articles,
-      processedIds,
-      Boolean(options.force),
-    );
+    const articles = options.reanalyzeExisting
+      ? state.papers
+      : await fetchArticleMetadata(await fetchRecentArticleIds(sourceUrl, limit));
+    const { articlesToAnalyze, skippedIds } = options.reanalyzeExisting
+      ? {
+          articlesToAnalyze: articles,
+          skippedIds: [],
+        }
+      : selectNewArticles(
+          articles,
+          processedIds,
+          Boolean(options.force),
+        );
 
     const { papers, failures } = await analyzeArticles(articlesToAnalyze, run.id);
 
