@@ -6,6 +6,7 @@ import { PaperChat } from "@/components/arxiv/PaperChat";
 import { PaperReader } from "@/components/arxiv/PaperReader";
 import type { AnalyzedPaper } from "@/lib/arxiv/types";
 
+type WorkspaceView = "pdf" | "html" | "chat";
 type ReaderMode = "pdf" | "html";
 
 const DEFAULT_READER_PERCENT = 66;
@@ -16,10 +17,14 @@ function clamp(value: number) {
   return Math.min(Math.max(value, MIN_READER_PERCENT), MAX_READER_PERCENT);
 }
 
-export function PaperWorkspace({ mode, paper }: { mode: ReaderMode; paper: AnalyzedPaper }) {
+export function PaperWorkspace({ view, paper }: { view: WorkspaceView; paper: AnalyzedPaper }) {
   const [readerPercent, setReaderPercent] = useState(DEFAULT_READER_PERCENT);
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // On desktop the reader always renders; if the URL view is "chat", default the reader to PDF.
+  const readerMode: ReaderMode = view === "html" ? "html" : "pdf";
+  const isChatView = view === "chat";
 
   useEffect(() => {
     if (!isDragging) {
@@ -86,14 +91,16 @@ export function PaperWorkspace({ mode, paper }: { mode: ReaderMode; paper: Analy
       className="mx-auto flex max-w-[96rem] flex-col gap-3 p-0 lg:h-screen lg:flex-row lg:gap-0"
     >
       <div
-        className={`min-w-0 lg:h-full ${isDragging ? "[&_iframe]:pointer-events-none" : ""}`}
+        className={`min-w-0 lg:h-full ${isChatView ? "hidden lg:block" : ""} ${
+          isDragging ? "[&_iframe]:pointer-events-none" : ""
+        }`}
         style={{
           flexBasis: `calc(${readerPercent}% - 0.375rem)`,
           flexGrow: 0,
           flexShrink: 0,
         }}
       >
-        <PaperReader mode={mode} paper={paper} />
+        <PaperReader mode={readerMode} paper={paper} />
       </div>
 
       <button
@@ -126,7 +133,7 @@ export function PaperWorkspace({ mode, paper }: { mode: ReaderMode; paper: Analy
 
       {isDragging ? <div className="fixed inset-0 z-50 cursor-col-resize lg:block" aria-hidden="true" /> : null}
 
-      <div className="min-w-0 lg:h-full lg:flex-1">
+      <div className={`min-w-0 lg:h-full lg:flex-1 ${isChatView ? "" : "hidden lg:block"}`}>
         <PaperChat paper={paper} />
       </div>
     </div>
