@@ -26,7 +26,7 @@ export function PaperReader({ mode, paper }: { mode: ReaderMode; paper: Analyzed
   const currentUrl = urls[mode];
 
   return (
-    <section className="flex h-[calc(100vh-8rem)] min-h-[28rem] flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950 lg:h-full lg:min-h-0">
+    <section className="flex h-[100dvh] flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950 lg:h-full lg:min-h-0">
       <div className="flex h-11 items-center justify-between gap-2 border-b border-zinc-200 px-2 dark:border-zinc-800">
         <div className="flex shrink-0 items-center gap-2">
           <Link
