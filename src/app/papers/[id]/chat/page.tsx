@@ -42,7 +42,7 @@ export default async function PaperChatPage({ params, searchParams }: PageProps)
   }
 
   return (
-    <main className="min-h-screen bg-zinc-50 text-zinc-950 dark:bg-zinc-950 dark:text-white">
+    <main className="min-h-[100dvh] bg-zinc-50 text-zinc-950 dark:bg-zinc-950 dark:text-white">
       <PaperWorkspace view={view} paper={paper} />
     </main>
   );
