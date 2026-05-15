@@ -2,9 +2,9 @@
 
 import type { MouseEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, Cpu, Eye, FileText, Heart, History, MessageCircle, Tag } from "lucide-react";
+import { BrainCircuit, ChevronDown, Cpu, Eye, FileText, Heart, History, MessageCircle, Tag, Workflow } from "lucide-react";
 import { parseTagFilter, tagLabels, type TagFilter } from "@/lib/arxiv/filters";
-import type { AnalyzedPaper, ArxivState, PaperTag, RunStatus } from "@/lib/arxiv/types";
+import { PAPER_TAGS, type AnalyzedPaper, type ArxivState, type PaperTag, type RunStatus } from "@/lib/arxiv/types";
 import { ManualAddButton } from "@/components/arxiv/ManualAddButton";
 import { RunAnalysisButton } from "@/components/arxiv/RunAnalysisButton";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
@@ -15,6 +15,10 @@ const tagStyles: Record<PaperTag, string> = {
     "border-cyan-200 bg-cyan-50 text-cyan-800 dark:border-cyan-900 dark:bg-cyan-950/50 dark:text-cyan-200",
   custom_hardware:
     "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-200",
+  vla:
+    "border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-900 dark:bg-violet-950/50 dark:text-violet-200",
+  world_model:
+    "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-200",
 };
 
 const statusLabels: Record<RunStatus, string> = {
@@ -52,6 +56,10 @@ function formatAuthors(authors: string[]) {
 
 function tagCount(papers: AnalyzedPaper[], tag: PaperTag) {
   return papers.filter((paper) => paper.tags.includes(tag)).length;
+}
+
+function tagCounts(papers: AnalyzedPaper[]) {
+  return Object.fromEntries(PAPER_TAGS.map((tag) => [tag, tagCount(papers, tag)])) as Record<PaperTag, number>;
 }
 
 function arxivHtmlUrl(paper: AnalyzedPaper) {
@@ -358,8 +366,7 @@ export function PaperDashboard({
   const papers = state.papers;
   const lastRun = state.runs[0];
   const lastCompletedRun = state.runs.find((run) => run.status === "completed");
-  const egocentricCount = useMemo(() => tagCount(papers, "egocentric"), [papers]);
-  const hardwareCount = useMemo(() => tagCount(papers, "custom_hardware"), [papers]);
+  const countsByTag = useMemo(() => tagCounts(papers), [papers]);
   const favoritesCount = useMemo(
     () => papers.reduce((count, paper) => (favorites.has(paper.id) ? count + 1 : count), 0),
     [favorites, papers],
@@ -441,7 +448,7 @@ export function PaperDashboard({
             />
             <FilterLink
               active={activeFilter === "egocentric"}
-              count={egocentricCount}
+              count={countsByTag.egocentric}
               filter="egocentric"
               icon={<Eye className="h-4 w-4" aria-hidden="true" />}
               label="egocentric"
@@ -449,10 +456,26 @@ export function PaperDashboard({
             />
             <FilterLink
               active={activeFilter === "custom_hardware"}
-              count={hardwareCount}
+              count={countsByTag.custom_hardware}
               filter="custom_hardware"
               icon={<Cpu className="h-4 w-4" aria-hidden="true" />}
               label="自建采集硬件"
+              onSelect={selectFilter}
+            />
+            <FilterLink
+              active={activeFilter === "vla"}
+              count={countsByTag.vla}
+              filter="vla"
+              icon={<Workflow className="h-4 w-4" aria-hidden="true" />}
+              label="VLA"
+              onSelect={selectFilter}
+            />
+            <FilterLink
+              active={activeFilter === "world_model"}
+              count={countsByTag.world_model}
+              filter="world_model"
+              icon={<BrainCircuit className="h-4 w-4" aria-hidden="true" />}
+              label="WM"
               onSelect={selectFilter}
             />
             <FilterLink

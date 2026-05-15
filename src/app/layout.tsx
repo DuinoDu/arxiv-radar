@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "arxiv-radar",
-  description: "Daily arXiv robotics paper summaries with egocentric and custom-hardware tags",
+  description: "Daily arXiv robotics paper summaries with egocentric, custom-hardware, VLA, and WM tags",
 };
 
 export default function RootLayout({

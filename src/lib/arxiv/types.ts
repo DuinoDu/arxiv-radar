@@ -1,4 +1,4 @@
-export const PAPER_TAGS = ["egocentric", "custom_hardware"] as const;
+export const PAPER_TAGS = ["egocentric", "custom_hardware", "vla", "world_model"] as const;
 
 export type PaperTag = (typeof PAPER_TAGS)[number];
 
