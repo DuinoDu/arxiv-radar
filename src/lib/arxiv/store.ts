@@ -221,6 +221,20 @@ export async function upsertRun(run: AnalysisRun) {
   }));
 }
 
+export async function addManualPaper(paper: AnalyzedPaper) {
+  await mutateArxivState((state) => {
+    const existingPapers = state.papers.filter((existing) => existing.id !== paper.id);
+    const processedArticleIds = new Set(state.processedArticleIds);
+    processedArticleIds.add(paper.id);
+
+    return {
+      ...state,
+      processedArticleIds: Array.from(processedArticleIds),
+      papers: [paper, ...existingPapers],
+    };
+  });
+}
+
 export async function finishRun(run: AnalysisRun, papers: AnalyzedPaper[]) {
   await mutateArxivState((state) => {
     const paperIds = new Set(papers.map((paper) => paper.id));
