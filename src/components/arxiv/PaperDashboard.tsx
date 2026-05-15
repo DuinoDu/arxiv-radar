@@ -182,15 +182,21 @@ function FilterLink({
   );
 }
 
+function paperCardDomId(id: string) {
+  return `paper-card-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+}
+
 function PaperRow({
   paper,
   timeZone,
   isFavorite,
+  highlighted,
   onToggleFavorite,
 }: {
   paper: AnalyzedPaper;
   timeZone: string;
   isFavorite: boolean;
+  highlighted: boolean;
   onToggleFavorite: (id: string) => void;
 }) {
   const detailItems = [
@@ -201,7 +207,14 @@ function PaperRow({
   ];
 
   return (
-    <article className="rounded-lg border border-zinc-200 bg-white px-4 py-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+    <article
+      id={paperCardDomId(paper.id)}
+      className={`rounded-lg border bg-white px-4 py-3 shadow-sm transition dark:bg-zinc-950 ${
+        highlighted
+          ? "border-amber-400 ring-4 ring-amber-300/70 ring-offset-2 ring-offset-zinc-50 dark:border-amber-400 dark:ring-amber-500/40 dark:ring-offset-zinc-950"
+          : "border-zinc-200 dark:border-zinc-800"
+      }`}
+    >
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
@@ -354,6 +367,7 @@ export function PaperDashboard({
   timeZone: string;
 }) {
   const [activeFilter, setActiveFilter] = useState(initialFilter);
+  const [focusedPaperId, setFocusedPaperId] = useState<string | null>(null);
   const { favorites, isFavorite, toggleFavorite } = useFavorites();
   const papers = state.papers;
   const lastRun = state.runs[0];
@@ -391,6 +405,49 @@ export function PaperDashboard({
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
+  useEffect(() => {
+    if (!focusedPaperId) {
+      return;
+    }
+
+    const targetId = focusedPaperId;
+    let scrollAttempts = 0;
+    let scrollTimer: ReturnType<typeof setTimeout> | undefined;
+
+    function tryScroll() {
+      const el = document.getElementById(paperCardDomId(targetId));
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
+
+      if (scrollAttempts < 5) {
+        scrollAttempts += 1;
+        scrollTimer = setTimeout(tryScroll, 80);
+      }
+    }
+
+    tryScroll();
+
+    const clearTimer = setTimeout(() => setFocusedPaperId(null), 2800);
+
+    return () => {
+      if (scrollTimer) clearTimeout(scrollTimer);
+      clearTimeout(clearTimer);
+    };
+  }, [focusedPaperId]);
+
+  function focusExistingPaper(id: string) {
+    // 切回 "全部" 保证目标卡片一定可见
+    if (activeFilter !== "all") {
+      setActiveFilter("all");
+      window.history.pushState({ tag: "all" }, "", currentUrlForFilter("all"));
+    }
+    // 先清空再设置，确保即便是同一个 id 也能重新触发滚动 + 高亮
+    setFocusedPaperId(null);
+    setTimeout(() => setFocusedPaperId(id), 0);
+  }
+
   function selectFilter(filter: TagFilter) {
     if (filter === activeFilter) {
       return;
@@ -418,7 +475,7 @@ export function PaperDashboard({
 
             <div className="flex items-start gap-3">
               <ThemeToggle />
-              <ManualAddButton />
+              <ManualAddButton onPaperExists={focusExistingPaper} />
               <RunAnalysisButton disabled={disableManualRun} />
             </div>
           </div>
@@ -489,6 +546,7 @@ export function PaperDashboard({
                 paper={paper}
                 timeZone={timeZone}
                 isFavorite={isFavorite(paper.id)}
+                highlighted={focusedPaperId === paper.id}
                 onToggleFavorite={toggleFavorite}
               />
             ))
