@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { ArrowLeft, ExternalLink, FileText, Globe2 } from "lucide-react";
+import { ArrowLeft, ExternalLink, FileText, Globe2, MessageSquare } from "lucide-react";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import type { AnalyzedPaper } from "@/lib/arxiv/types";
 
 type ReaderMode = "pdf" | "html";
+type WorkspaceView = "pdf" | "html" | "chat";
 
 function arxivHtmlUrl(paper: AnalyzedPaper) {
   return `https://arxiv.org/html/${paper.id}`;
@@ -13,8 +14,8 @@ function arxivPdfUrl(paper: AnalyzedPaper) {
   return (paper.pdfUrl || `https://arxiv.org/pdf/${paper.id}`).replace(/^http:/, "https:");
 }
 
-function chatPath(paper: AnalyzedPaper, mode: ReaderMode) {
-  return `/papers/${encodeURIComponent(paper.id)}/chat?view=${mode}`;
+function chatPath(paper: AnalyzedPaper, view: WorkspaceView) {
+  return `/papers/${encodeURIComponent(paper.id)}/chat?view=${view}`;
 }
 
 export function PaperReader({ mode, paper }: { mode: ReaderMode; paper: AnalyzedPaper }) {
@@ -66,6 +67,15 @@ export function PaperReader({ mode, paper }: { mode: ReaderMode; paper: Analyzed
             >
               <Globe2 className="h-4 w-4" aria-hidden="true" />
               HTML
+            </Link>
+            <Link
+              href={chatPath(paper, "chat")}
+              scroll={false}
+              aria-pressed={false}
+              className="inline-flex items-center gap-1.5 border-l border-zinc-200 px-2.5 text-xs font-medium text-zinc-600 transition hover:bg-white dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800 lg:hidden"
+            >
+              <MessageSquare className="h-4 w-4" aria-hidden="true" />
+              Chat
             </Link>
           </div>
 

@@ -21,17 +21,19 @@ function decodeRouteId(value: string) {
   }
 }
 
-function parseReaderMode(value?: string | string[]) {
+function parseView(value?: string | string[]) {
   const mode = Array.isArray(value) ? value[0] : value;
 
-  return mode === "html" ? "html" : "pdf";
+  if (mode === "html") return "html";
+  if (mode === "chat") return "chat";
+  return "pdf";
 }
 
 export default async function PaperChatPage({ params, searchParams }: PageProps) {
   const { id } = await params;
   const query = await searchParams;
   const paperId = decodeRouteId(id);
-  const readerMode = parseReaderMode(query?.view);
+  const view = parseView(query?.view);
   const state = await readArxivState();
   const paper = state.papers.find((candidate) => candidate.id === paperId);
 
@@ -41,7 +43,7 @@ export default async function PaperChatPage({ params, searchParams }: PageProps)
 
   return (
     <main className="min-h-screen bg-zinc-50 text-zinc-950 dark:bg-zinc-950 dark:text-white">
-      <PaperWorkspace mode={readerMode} paper={paper} />
+      <PaperWorkspace view={view} paper={paper} />
     </main>
   );
 }

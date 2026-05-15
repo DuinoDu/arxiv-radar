@@ -1,8 +1,16 @@
 "use client";
 
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
-import { Send } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, FileText, Globe2, MessageSquare, Send } from "lucide-react";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import type { AnalyzedPaper } from "@/lib/arxiv/types";
+
+type WorkspaceView = "pdf" | "html" | "chat";
+
+function chatPath(paper: AnalyzedPaper, view: WorkspaceView) {
+  return `/papers/${encodeURIComponent(paper.id)}/chat?view=${view}`;
+}
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -125,8 +133,52 @@ export function PaperChat({ paper }: { paper: AnalyzedPaper }) {
 
   return (
     <section className="flex h-[calc(100vh-8rem)] min-h-[28rem] flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950 lg:h-full lg:min-h-0">
-      <div className="flex h-11 items-center border-b border-zinc-200 px-3 dark:border-zinc-800">
-        <h2 className="text-sm font-medium tracking-normal text-zinc-950 dark:text-white">chat</h2>
+      <div className="flex h-11 items-center justify-between gap-2 border-b border-zinc-200 px-2 dark:border-zinc-800 lg:px-3">
+        <div className="flex shrink-0 items-center gap-2 lg:hidden">
+          <Link
+            href="/"
+            title="论文列表"
+            aria-label="论文列表"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-zinc-200 text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-900"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+          </Link>
+          <ThemeToggle className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900" />
+        </div>
+
+        <h2 className="hidden text-sm font-medium tracking-normal text-zinc-950 dark:text-white lg:block">
+          chat
+        </h2>
+
+        <div className="inline-flex h-8 shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 lg:hidden">
+          <Link
+            href={chatPath(paper, "pdf")}
+            scroll={false}
+            aria-pressed={false}
+            className="inline-flex items-center gap-1.5 px-2.5 text-xs font-medium text-zinc-600 transition hover:bg-white dark:text-zinc-300 dark:hover:bg-zinc-800"
+          >
+            <FileText className="h-4 w-4" aria-hidden="true" />
+            PDF
+          </Link>
+          <Link
+            href={chatPath(paper, "html")}
+            scroll={false}
+            aria-pressed={false}
+            className="inline-flex items-center gap-1.5 border-l border-zinc-200 px-2.5 text-xs font-medium text-zinc-600 transition hover:bg-white dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          >
+            <Globe2 className="h-4 w-4" aria-hidden="true" />
+            HTML
+          </Link>
+          <Link
+            href={chatPath(paper, "chat")}
+            scroll={false}
+            aria-pressed
+            className="inline-flex items-center gap-1.5 border-l border-zinc-200 bg-zinc-950 px-2.5 text-xs font-medium text-white dark:border-zinc-800 dark:bg-white dark:text-zinc-950"
+          >
+            <MessageSquare className="h-4 w-4" aria-hidden="true" />
+            Chat
+          </Link>
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3">
