@@ -1,6 +1,6 @@
 "use client";
 
-import type { MouseEvent, ReactNode } from "react";
+import type { MouseEvent, ReactNode, SVGProps } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot,
@@ -23,6 +23,23 @@ import { ManualAddButton } from "@/components/arxiv/ManualAddButton";
 import { RunAnalysisButton } from "@/components/arxiv/RunAnalysisButton";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { useFavorites } from "@/lib/arxiv/useFavorites";
+
+function GithubIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      {...props}
+    >
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M12 .5C5.73.5.75 5.48.75 11.75c0 4.97 3.22 9.18 7.69 10.67.56.1.77-.24.77-.54 0-.27-.01-1.16-.02-2.1-3.13.68-3.79-1.34-3.79-1.34-.51-1.3-1.25-1.65-1.25-1.65-1.02-.7.08-.68.08-.68 1.13.08 1.72 1.16 1.72 1.16 1 1.72 2.63 1.22 3.27.94.1-.73.39-1.22.71-1.5-2.5-.28-5.12-1.25-5.12-5.57 0-1.23.44-2.24 1.16-3.03-.12-.28-.5-1.43.11-2.98 0 0 .95-.3 3.1 1.16.9-.25 1.86-.38 2.82-.38.96 0 1.92.13 2.82.38 2.15-1.46 3.1-1.16 3.1-1.16.61 1.55.23 2.7.11 2.98.72.79 1.16 1.8 1.16 3.03 0 4.33-2.62 5.29-5.13 5.56.4.34.76 1.02.76 2.06 0 1.49-.01 2.69-.01 3.06 0 .3.2.65.78.54 4.47-1.49 7.69-5.7 7.69-10.67C23.25 5.48 18.27.5 12 .5Z"
+      />
+    </svg>
+  );
+}
 
 const paperTagSet = new Set<string>(PAPER_TAGS);
 
@@ -488,6 +505,28 @@ function PaperRow({
           >
             <FileText className="h-4 w-4" aria-hidden="true" />
           </a>
+          {paper.githubUrl ? (
+            <a
+              href={paper.githubUrl}
+              target="_blank"
+              rel="noreferrer"
+              title="GitHub 代码"
+              aria-label={`${paper.title} GitHub 代码`}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-900"
+            >
+              <GithubIcon className="h-4 w-4" />
+            </a>
+          ) : (
+            <button
+              type="button"
+              disabled
+              title="未找到 GitHub 链接"
+              aria-label={`${paper.title} 未找到 GitHub 链接`}
+              className="inline-flex h-9 w-9 cursor-not-allowed items-center justify-center rounded-md border border-zinc-200 bg-zinc-100 text-zinc-400 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-600"
+            >
+              <GithubIcon className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </div>
 

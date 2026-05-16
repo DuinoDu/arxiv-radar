@@ -33,6 +33,7 @@ export interface AnalyzedPaper extends ArxivArticle {
   fullTextUrl?: string;
   fullTextError?: string;
   fullTextAnalyzedAt?: string;
+  githubUrl?: string;
   model: string;
   confidence?: number;
   analyzedAt: string;
