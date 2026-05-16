@@ -129,6 +129,41 @@ function toTags(analysis: ModelAnalysis, fullText: PaperFullText) {
   };
 }
 
+const GITHUB_URL_REGEX = /https?:\/\/(?:www\.)?github\.com\/[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9._\-#/]*)?/gi;
+
+export function extractGithubUrl(...sources: Array<string | undefined>) {
+  for (const source of sources) {
+    if (!source) {
+      continue;
+    }
+
+    const matches = source.match(GITHUB_URL_REGEX);
+    if (!matches || matches.length === 0) {
+      continue;
+    }
+
+    for (const raw of matches) {
+      // Strip trailing punctuation that often gets glued onto URLs in prose.
+      const cleaned = raw.replace(/[).,;:'"”’\]>]+$/g, "");
+      const lower = cleaned.toLowerCase();
+
+      // Skip non-repo paths we don't want to deep-link to.
+      if (
+        /github\.com\/?$/.test(lower) ||
+        /github\.com\/(?:about|features|pricing|enterprise|customer-stories|security|team|topics|trending|marketplace|explore|notifications|settings|search|sponsors|orgs|login|join|new|readme|codespaces|issues|pulls|blog)(?:\/|$)/.test(
+          lower,
+        )
+      ) {
+        continue;
+      }
+
+      return cleaned;
+    }
+  }
+
+  return undefined;
+}
+
 function extractJson(text: string) {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fenced?.[1]) {
@@ -277,6 +312,7 @@ export async function analyzeArticle(
   const fullText = await fetchPaperFullText(article);
   const analysis = await analyzeArticleWithModel(article, fullText);
   const { tags, tagEvidence, tagConfidence, tagSource } = toTags(analysis, fullText);
+  const githubUrl = extractGithubUrl(article.abstract, fullText.text);
 
   return {
     ...article,
@@ -293,6 +329,7 @@ export async function analyzeArticle(
     fullTextUrl: fullText.url,
     fullTextError: fullText.error,
     fullTextAnalyzedAt: new Date().toISOString(),
+    githubUrl,
     model: getOpenAiModel(),
     confidence: analysis.confidence,
     analyzedAt: new Date().toISOString(),
