@@ -24,9 +24,11 @@ function decodeRouteId(value: string) {
 function parseView(value?: string | string[]) {
   const mode = Array.isArray(value) ? value[0] : value;
 
+  if (mode === "pdf") return "pdf";
   if (mode === "html") return "html";
-  if (mode === "chat") return "chat";
-  return "pdf";
+  // Default to chat so mobile lands on the chat panel; desktop layout
+  // is unaffected because both panels render side-by-side on lg+.
+  return "chat";
 }
 
 export default async function PaperChatPage({ params, searchParams }: PageProps) {

@@ -29,14 +29,17 @@ export function PaperReader({ mode, paper }: { mode: ReaderMode; paper: Analyzed
     <section className="flex h-[100dvh] flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950 lg:h-full lg:min-h-0">
       <div className="flex h-11 items-center justify-between gap-2 border-b border-zinc-200 px-2 dark:border-zinc-800">
         <div className="flex shrink-0 items-center gap-2">
-          <Link
+          {/* Intentional hard navigation: ensure clicking back lands on a
+              fresh `/` instead of restoring the previous router/scroll state. */}
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+          <a
             href="/"
             title="论文列表"
             aria-label="论文列表"
             className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-zinc-200 text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-900"
           >
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-          </Link>
+          </a>
           <ThemeToggle className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900" />
         </div>
 
