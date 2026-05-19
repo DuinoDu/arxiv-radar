@@ -804,7 +804,7 @@ export function PaperDashboard({
       : activeFilter === "favorites"
         ? "收藏论文"
         : activeFilter === "running_chat"
-          ? "running chat 论文"
+          ? "chat 论文"
           : `${tagLabels[activeFilter]} 论文`;
 
   useEffect(() => {
@@ -1032,7 +1032,7 @@ export function PaperDashboard({
               count={runningChatCount}
               filter="running_chat"
               icon={<MessageCircle className="h-4 w-4" aria-hidden="true" />}
-              label="running chat"
+              label="chat"
               onSelect={selectFilter}
             />
           </nav>
