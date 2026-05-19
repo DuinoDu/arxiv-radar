@@ -1,19 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, FileText, Globe2, MessageSquare } from "lucide-react";
 import {
   ChatProvider,
   MessageInput,
-  MessageList,
   RuntimeStatusBar,
   createRestAdapter,
+  useChat,
   type ChatViewLabels,
 } from "@love-moon/app-sdk/react";
 import { isConductorAppError } from "@love-moon/app-sdk";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import type { AnalyzedPaper } from "@/lib/arxiv/types";
+import { MessageList } from "@/components/arxiv/chat/MessageList";
+import {
+  TaskStatusBadge,
+  type ChatTaskStatus,
+} from "@/components/arxiv/chat/TaskStatusBadge";
 
 type WorkspaceView = "pdf" | "html" | "chat";
 
@@ -44,10 +49,55 @@ type BindResponse = {
   error?: string;
 };
 
+type ConductorTask = {
+  id?: string;
+  status?: string;
+  metadata?: { killingStartedAt?: string | null } | null;
+  updatedAt?: string | null;
+};
+
 // Cap auto-rebind attempts so a sticky upstream `task_not_found` (Conductor
 // outage, token rotation, project deletion) can't spin the counter forever.
 // Past this, surface a manual retry button that resets the counter.
 const MAX_AUTO_REBINDS = 3;
+
+// Poll cadence for the task status badge. Light enough that 100 tabs open
+// don't DDoS our BFF; tight enough that kill / restart transitions land in
+// the UI within ~5 seconds.
+const TASK_STATUS_POLL_MS = 5_000;
+
+/**
+ * Inner component that lives INSIDE the ChatProvider so it can use
+ * `useChat()` to get `send` / `interrupt` callbacks. These get passed to
+ * MessageList → MessageBubble for the popup toolbar's Resend / Interrupt
+ * actions. Restart is wired at the PaperChat level (it's not part of the
+ * SDK store).
+ */
+function ChatBody({
+  onRestart,
+  restartEnabled,
+  restartPending,
+}: {
+  onRestart?: () => void;
+  restartEnabled?: boolean;
+  restartPending?: boolean;
+}) {
+  const { send, interrupt } = useChat();
+  return (
+    <MessageList
+      labels={CHAT_LABELS}
+      onResend={(content) => {
+        void send(content);
+      }}
+      onRestart={onRestart}
+      restartEnabled={restartEnabled}
+      restartPending={restartPending}
+      onInterrupt={() => {
+        void interrupt();
+      }}
+    />
+  );
+}
 
 export function PaperChat({ paper }: { paper: AnalyzedPaper }) {
   const [taskId, setTaskId] = useState<string | null>(null);
@@ -62,12 +112,19 @@ export function PaperChat({ paper }: { paper: AnalyzedPaper }) {
   // user a fresh budget of self-heal attempts after they intervene.
   const [autoRebinds, setAutoRebinds] = useState(0);
 
+  // Task lifecycle state for the top-bar status badge.
+  const [taskStatus, setTaskStatus] = useState<ChatTaskStatus>("unknown");
+  const [killingStartedAt, setKillingStartedAt] = useState<string | null>(null);
+  const [killing, setKilling] = useState(false);
+  const [restarting, setRestarting] = useState(false);
+
   useEffect(() => {
     const controller = new AbortController();
 
     async function bind() {
       setTaskId(null);
       setBindError(null);
+      setTaskStatus("unknown");
 
       try {
         const response = await fetch("/api/conductor/bind", {
@@ -96,6 +153,107 @@ export function PaperChat({ paper }: { paper: AnalyzedPaper }) {
     return () => controller.abort();
   }, [paper.id, bindAttempt]);
 
+  // Fetch + poll the task lifecycle status from our BFF. The SDK's
+  // subscribe stream gives us per-reply runtime events but not the
+  // task-lifecycle status (init / running / killed / completed). We poll
+  // here so the badge transitions cleanly through kill / restart.
+  const fetchTaskStatus = useCallback(
+    async (currentTaskId: string, signal: AbortSignal): Promise<void> => {
+      try {
+        const res = await fetch(
+          `/api/conductor/tasks/${encodeURIComponent(currentTaskId)}`,
+          { signal },
+        );
+        if (signal.aborted || !res.ok) return;
+        const task = (await res.json()) as ConductorTask;
+        if (signal.aborted) return;
+        if (typeof task?.status === "string") {
+          setTaskStatus(task.status);
+        }
+        const killStartedAt =
+          (task?.metadata && task.metadata.killingStartedAt) ||
+          task?.updatedAt ||
+          null;
+        setKillingStartedAt(killStartedAt);
+      } catch {
+        /* swallow — keep last known status until the next tick succeeds */
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!taskId) return;
+    const controller = new AbortController();
+    void fetchTaskStatus(taskId, controller.signal);
+    const intervalId = window.setInterval(() => {
+      void fetchTaskStatus(taskId, controller.signal);
+    }, TASK_STATUS_POLL_MS);
+    return () => {
+      controller.abort();
+      window.clearInterval(intervalId);
+    };
+  }, [taskId, bindAttempt, fetchTaskStatus]);
+
+  const handleKillTask = useCallback(async () => {
+    if (!taskId || killing) return;
+    setKilling(true);
+    setKillingStartedAt(new Date().toISOString());
+    try {
+      const res = await fetch(
+        `/api/conductor/tasks/${encodeURIComponent(taskId)}/kill`,
+        { method: "POST" },
+      );
+      const payload = (await res.json().catch(() => ({}))) as ConductorTask & {
+        error?: string;
+      };
+      if (!res.ok) throw new Error(payload?.error || "Failed to kill task");
+      if (typeof payload.status === "string") {
+        setTaskStatus(payload.status);
+      }
+    } catch (err) {
+      console.error("[paper-chat] kill", err);
+    } finally {
+      setKilling(false);
+    }
+  }, [taskId, killing]);
+
+  const handleRestartTask = useCallback(async () => {
+    if (!taskId || restarting) return;
+    setRestarting(true);
+    try {
+      const res = await fetch(
+        `/api/conductor/tasks/${encodeURIComponent(taskId)}/restart`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ strategy: "inplace" }),
+        },
+      );
+      const payload = (await res.json().catch(() => ({}))) as {
+        task?: ConductorTask;
+        error?: string;
+      } & ConductorTask;
+      if (!res.ok) throw new Error(payload?.error || "Failed to restart task");
+      // Restart returns either `{ task: {...} }` (main app shape) or just the
+      // task object (raw conductor REST). Tolerate both.
+      const task: ConductorTask =
+        payload.task && typeof payload.task === "object"
+          ? payload.task
+          : (payload as ConductorTask);
+      if (typeof task.status === "string") setTaskStatus(task.status);
+      // strategy='inplace' should return the same task id; tolerate a new id
+      // (strategy='fresh' or upstream policy change) by rebinding to it.
+      if (typeof task.id === "string" && task.id !== taskId) {
+        setTaskId(task.id);
+      }
+    } catch (err) {
+      console.error("[paper-chat] restart", err);
+    } finally {
+      setRestarting(false);
+    }
+  }, [taskId, restarting]);
+
   function handleChatError(error: unknown) {
     console.error("[paper-chat]", error);
     // Auto-rebind path. If Conductor lost track of our task (deleted
@@ -121,10 +279,6 @@ export function PaperChat({ paper }: { paper: AnalyzedPaper }) {
       setBindAttempt((n) => n + 1);
       return;
     }
-    // Cap exhausted. Surface a bindError so the error pane (with the
-    // retry button) replaces the now-dead ChatView and the user has a
-    // way back. Without this the user just stares at the SDK's internal
-    // error bubble with no escape short of a tab reload.
     setBindError("聊天会话失效，无法自动恢复。请点击重试或刷新页面。");
     setTaskId(null);
   }
@@ -134,6 +288,13 @@ export function PaperChat({ paper }: { paper: AnalyzedPaper }) {
     setAutoRebinds(0);
     setBindAttempt((n) => n + 1);
   }
+
+  const isStopped =
+    taskStatus === "killed" ||
+    taskStatus === "completed" ||
+    taskStatus === "failed" ||
+    taskStatus === "cancelled" ||
+    taskStatus === "unknown";
 
   return (
     <section className="flex h-[100dvh] flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950 lg:h-full lg:min-h-0">
@@ -153,38 +314,62 @@ export function PaperChat({ paper }: { paper: AnalyzedPaper }) {
           <ThemeToggle className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900" />
         </div>
 
-        <h2 className="hidden text-sm font-medium tracking-normal text-zinc-950 dark:text-white lg:block">
-          chat
-        </h2>
+        <div className="hidden items-center gap-2 lg:flex">
+          <h2 className="text-sm font-medium tracking-normal text-zinc-950 dark:text-white">
+            chat
+          </h2>
+          {taskId ? (
+            <TaskStatusBadge
+              status={taskStatus}
+              killing={killing}
+              restarting={restarting}
+              killingStartedAt={killingStartedAt}
+              onKill={handleKillTask}
+              onRestart={handleRestartTask}
+            />
+          ) : null}
+        </div>
 
-        <div className="inline-flex h-8 shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 lg:hidden">
-          <Link
-            href={chatPath(paper, "pdf")}
-            scroll={false}
-            aria-pressed={false}
-            className="inline-flex items-center gap-1.5 px-2.5 text-xs font-medium text-zinc-600 transition hover:bg-white dark:text-zinc-300 dark:hover:bg-zinc-800"
-          >
-            <FileText className="h-4 w-4" aria-hidden="true" />
-            PDF
-          </Link>
-          <Link
-            href={chatPath(paper, "html")}
-            scroll={false}
-            aria-pressed={false}
-            className="inline-flex items-center gap-1.5 border-l border-zinc-200 px-2.5 text-xs font-medium text-zinc-600 transition hover:bg-white dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800"
-          >
-            <Globe2 className="h-4 w-4" aria-hidden="true" />
-            HTML
-          </Link>
-          <Link
-            href={chatPath(paper, "chat")}
-            scroll={false}
-            aria-pressed
-            className="inline-flex items-center gap-1.5 border-l border-zinc-200 bg-zinc-950 px-2.5 text-xs font-medium text-white dark:border-zinc-800 dark:bg-white dark:text-zinc-950"
-          >
-            <MessageSquare className="h-4 w-4" aria-hidden="true" />
-            Chat
-          </Link>
+        <div className="inline-flex items-center gap-2 lg:hidden">
+          {taskId ? (
+            <TaskStatusBadge
+              status={taskStatus}
+              killing={killing}
+              restarting={restarting}
+              killingStartedAt={killingStartedAt}
+              onKill={handleKillTask}
+              onRestart={handleRestartTask}
+            />
+          ) : null}
+          <div className="inline-flex h-8 shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900">
+            <Link
+              href={chatPath(paper, "pdf")}
+              scroll={false}
+              aria-pressed={false}
+              className="inline-flex items-center gap-1.5 px-2.5 text-xs font-medium text-zinc-600 transition hover:bg-white dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              <FileText className="h-4 w-4" aria-hidden="true" />
+              PDF
+            </Link>
+            <Link
+              href={chatPath(paper, "html")}
+              scroll={false}
+              aria-pressed={false}
+              className="inline-flex items-center gap-1.5 border-l border-zinc-200 px-2.5 text-xs font-medium text-zinc-600 transition hover:bg-white dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              <Globe2 className="h-4 w-4" aria-hidden="true" />
+              HTML
+            </Link>
+            <Link
+              href={chatPath(paper, "chat")}
+              scroll={false}
+              aria-pressed
+              className="inline-flex items-center gap-1.5 border-l border-zinc-200 bg-zinc-950 px-2.5 text-xs font-medium text-white dark:border-zinc-800 dark:bg-white dark:text-zinc-950"
+            >
+              <MessageSquare className="h-4 w-4" aria-hidden="true" />
+              Chat
+            </Link>
+          </div>
         </div>
       </div>
 
@@ -211,11 +396,11 @@ export function PaperChat({ paper }: { paper: AnalyzedPaper }) {
           </div>
         ) : (
           // Manual composition (instead of `<ChatView>`) so we can put the
-          // runtime status bar above the input (the SDK's <ChatView> hard-codes
-          // it at the top of the panel). `conductor-chat-view` is kept as the
-          // wrapper class so the SDK's component CSS applies, and globals.css
-          // overrides the SDK's `display: grid` to a flex column to drive the
-          // ordering from DOM order.
+          // runtime status bar above the input and inject our own MessageList
+          // (with double-click popup toolbar). `conductor-chat-view` is kept
+          // as the wrapper class so the SDK's component CSS applies, and
+          // globals.css overrides the SDK's `display: grid` to a flex column
+          // so DOM order drives visual order.
           <div
             className="conductor-chat-view absolute inset-0"
             data-task-id={taskId}
@@ -226,7 +411,11 @@ export function PaperChat({ paper }: { paper: AnalyzedPaper }) {
               adapter={adapter}
               onError={handleChatError}
             >
-              <MessageList labels={CHAT_LABELS} />
+              <ChatBody
+                onRestart={handleRestartTask}
+                restartEnabled={isStopped && !restarting}
+                restartPending={restarting}
+              />
               <RuntimeStatusBar labels={CHAT_LABELS} />
               <MessageInput labels={CHAT_LABELS} />
             </ChatProvider>
