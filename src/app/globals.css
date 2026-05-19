@@ -41,3 +41,101 @@ a {
 summary::-webkit-details-marker {
   display: none;
 }
+
+/* ----- @love-moon/app-sdk ChatView theme override -------------------------
+ * The SDK exposes CSS variables on `.conductor-chat-view`. We re-skin them
+ * to match arxiv-radar's zinc palette and add dark-mode support keyed off
+ * `html.dark` (next-themes attribute="class"). Override is scoped to the
+ * widget root — no leakage. */
+
+.conductor-chat-view {
+  --accent: #09090b;
+  --conductor-paper: #ffffff;
+  --conductor-text: #09090b;
+  --conductor-text-muted: rgb(82 82 91);
+  --conductor-bubble-user: #09090b;
+  --conductor-bubble-assistant: #f4f4f5;
+  --conductor-border: #e4e4e7;
+  --conductor-radius: 8px;
+}
+
+/* User bubble: filled dark, inverted text. The SDK doesn't have a per-bubble
+ * text-color variable, so we set it directly. */
+.conductor-chat-view .conductor-message--user .conductor-bubble {
+  color: #fafafa;
+  border-color: transparent;
+}
+
+.conductor-chat-view .conductor-message-input__textarea {
+  background: #ffffff;
+}
+
+.conductor-chat-view .conductor-message-input__textarea:focus {
+  border-color: rgb(161 161 170);
+  box-shadow: 0 0 0 3px rgb(228 228 231 / 0.6);
+}
+
+.conductor-chat-view .conductor-button--send {
+  background: #09090b;
+  color: #fafafa;
+}
+
+.conductor-chat-view .conductor-button--send:hover {
+  background: #27272a;
+  filter: none;
+}
+
+.dark .conductor-chat-view {
+  --accent: #fafafa;
+  --conductor-paper: #09090b;
+  --conductor-text: #fafafa;
+  --conductor-text-muted: rgb(161 161 170);
+  --conductor-bubble-user: #fafafa;
+  --conductor-bubble-assistant: #18181b;
+  --conductor-border: #27272a;
+}
+
+.dark .conductor-chat-view .conductor-message--user .conductor-bubble {
+  color: #09090b;
+}
+
+.dark .conductor-chat-view .conductor-message-input__textarea {
+  background: #09090b;
+  color: #fafafa;
+}
+
+.dark .conductor-chat-view .conductor-message-input__textarea:focus {
+  border-color: rgb(82 82 91);
+  box-shadow: 0 0 0 3px rgb(39 39 42 / 0.6);
+}
+
+/* Defensive: SDK 0.3.x only ships `--send` / `--interrupt` button variants,
+ * but `.conductor-button` base has a hardcoded `background: #fff` that
+ * would render as a white square on the dark page if a future SDK adds a
+ * plain-variant button. Route generic non-variant buttons through our CSS
+ * variables; explicitly exclude the known variants so their own backgrounds
+ * (red for interrupt, white for send) survive. */
+.dark
+  .conductor-chat-view
+  .conductor-button:not(.conductor-button--send):not(.conductor-button--interrupt) {
+  background: var(--conductor-paper);
+  color: var(--conductor-text);
+}
+
+.dark
+  .conductor-chat-view
+  .conductor-button:not(.conductor-button--send):not(.conductor-button--interrupt):hover {
+  background: rgb(255 255 255 / 0.06);
+}
+
+/* Only override --send in dark mode (symmetric with light). The SDK's
+ * --interrupt red works in both modes. */
+.dark .conductor-chat-view .conductor-button--send {
+  background: #fafafa;
+  color: #09090b;
+}
+
+.dark .conductor-chat-view .conductor-button--send:hover {
+  background: #e4e4e7;
+  filter: none;
+}

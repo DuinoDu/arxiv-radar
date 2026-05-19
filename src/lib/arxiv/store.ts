@@ -13,6 +13,7 @@ import {
   type ArxivState,
   type PaperTag,
   type PaperTagSource,
+  type PaperTaskBinding,
 } from "./types";
 
 const STATE_VERSION = 1;
@@ -76,7 +77,32 @@ function createEmptyState(): ArxivState {
     favoriteIds: [],
     papers: [],
     runs: [],
+    paperTasks: {},
   };
+}
+
+function normalizePaperTasks(value: unknown): Record<string, PaperTaskBinding> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  const result: Record<string, PaperTaskBinding> = {};
+  for (const [paperId, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (!raw || typeof raw !== "object") continue;
+    const candidate = raw as Partial<PaperTaskBinding>;
+    if (
+      typeof candidate.taskId === "string" &&
+      typeof candidate.projectId === "string" &&
+      typeof candidate.createdAt === "string"
+    ) {
+      result[paperId] = {
+        taskId: candidate.taskId,
+        projectId: candidate.projectId,
+        createdAt: candidate.createdAt,
+      };
+    }
+  }
+  return result;
 }
 
 function normalizeState(parsed: Partial<ArxivState>): ArxivState {
@@ -91,6 +117,7 @@ function normalizeState(parsed: Partial<ArxivState>): ArxivState {
       : [],
     papers: Array.isArray(parsed.papers) ? parsed.papers : [],
     runs: Array.isArray(parsed.runs) ? parsed.runs : [],
+    paperTasks: normalizePaperTasks(parsed.paperTasks),
   };
 }
 
@@ -103,6 +130,7 @@ function prepareStateForWrite(state: ArxivState): ArxivState {
     favoriteIds: Array.from(new Set(state.favoriteIds)),
     papers: state.papers.slice(0, MAX_STORED_PAPERS),
     runs: state.runs.slice(0, MAX_RUNS),
+    paperTasks: state.paperTasks ?? {},
   };
 }
 
@@ -325,6 +353,48 @@ export async function addManualPaper(paper: AnalyzedPaper) {
       processedArticleIds: Array.from(processedArticleIds),
       papers: [paper, ...existingPapers],
     };
+  });
+}
+
+export async function getPaperTaskBinding(
+  paperId: string,
+): Promise<PaperTaskBinding | undefined> {
+  const state = await readArxivState();
+  return state.paperTasks?.[paperId];
+}
+
+export async function setPaperTaskBinding(
+  paperId: string,
+  binding: PaperTaskBinding,
+) {
+  await mutateArxivState((state) => ({
+    ...state,
+    paperTasks: {
+      ...(state.paperTasks ?? {}),
+      [paperId]: binding,
+    },
+  }));
+}
+
+/**
+ * Drop any binding(s) that reference the given Conductor taskId. Used when
+ * Conductor reports `task_not_found` for a stored binding (task was deleted
+ * server-side, project rotated, etc.) so the next visit re-creates a fresh
+ * task instead of looping on the dead id.
+ */
+export async function clearPaperTaskBindingByTaskId(taskId: string) {
+  await mutateArxivState((state) => {
+    const map = state.paperTasks ?? {};
+    let mutated = false;
+    const next: Record<string, PaperTaskBinding> = {};
+    for (const [paperId, binding] of Object.entries(map)) {
+      if (binding.taskId === taskId) {
+        mutated = true;
+        continue;
+      }
+      next[paperId] = binding;
+    }
+    return mutated ? { ...state, paperTasks: next } : state;
   });
 }
 
