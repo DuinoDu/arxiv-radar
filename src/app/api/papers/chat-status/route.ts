@@ -10,8 +10,31 @@ type ChatStatusResponse = {
   killedPaperIds: string[];
 };
 
+type BoundPaperTask = {
+  paperId: string;
+  projectId: string;
+  taskId: string;
+};
+
 function conductorReadConfigured() {
   return Boolean(process.env.CONDUCTOR_BASE_URL && process.env.CONDUCTOR_TOKEN);
+}
+
+function normalizeStatus(status: unknown) {
+  return typeof status === "string" ? status.toLowerCase() : "";
+}
+
+function isRunningChatStatus(status: string) {
+  return (
+    status === "init" ||
+    status === "pending" ||
+    status === "running" ||
+    status === "killing"
+  );
+}
+
+function isKilledChatStatus(status: string) {
+  return status === "killed" || status === "cancelled";
 }
 
 export async function GET() {
@@ -19,9 +42,13 @@ export async function GET() {
   const visiblePaperIds = new Set(
     state.papers.filter((paper) => !paper.removed).map((paper) => paper.id),
   );
-  const paperTasks = Object.entries(state.paperTasks ?? {}).filter(([paperId]) =>
-    visiblePaperIds.has(paperId),
-  );
+  const paperTasks: BoundPaperTask[] = Object.entries(state.paperTasks ?? {})
+    .filter(([paperId]) => visiblePaperIds.has(paperId))
+    .map(([paperId, binding]) => ({
+      paperId,
+      projectId: binding.projectId,
+      taskId: binding.taskId,
+    }));
 
   if (paperTasks.length === 0 || !conductorReadConfigured()) {
     return NextResponse.json({
@@ -32,35 +59,36 @@ export async function GET() {
 
   try {
     const client = await getConductorClient();
-    const taskToPaperId = new Map<string, string>();
-    const projectIds = new Set<string>();
-
-    for (const [paperId, binding] of paperTasks) {
-      taskToPaperId.set(binding.taskId, paperId);
-      projectIds.add(binding.projectId);
+    const taskById = new Map<string, { id: string; status?: unknown }>();
+    const projectTasks = await Promise.all(
+      Array.from(new Set(paperTasks.map((task) => task.projectId))).map((projectId) =>
+        client.tasks.list({ projectId }),
+      ),
+    );
+    for (const task of projectTasks.flat()) {
+      taskById.set(task.id, task);
     }
 
-    const [runningTasks, killedTasks] = await Promise.all([
-      Promise.all(
-        Array.from(projectIds).map((projectId) =>
-          client.tasks.list({ projectId, status: "running" }),
-        ),
-      ),
-      Promise.all(
-        Array.from(projectIds).map((projectId) =>
-          client.tasks.list({ projectId, status: "killed" }),
-        ),
-      ),
-    ]);
+    const missingTasks = paperTasks.filter((binding) => !taskById.has(binding.taskId));
+    const fetchedMissingTasks = await Promise.allSettled(
+      missingTasks.map((binding) => client.tasks.get(binding.taskId)),
+    );
+    for (const result of fetchedMissingTasks) {
+      if (result.status === "fulfilled") {
+        taskById.set(result.value.id, result.value);
+      }
+    }
 
-    const runningPaperIds = runningTasks
-      .flat()
-      .map((task) => taskToPaperId.get(task.id))
-      .filter((paperId): paperId is string => Boolean(paperId));
-    const killedPaperIds = killedTasks
-      .flat()
-      .map((task) => taskToPaperId.get(task.id))
-      .filter((paperId): paperId is string => Boolean(paperId));
+    const runningPaperIds: string[] = [];
+    const killedPaperIds: string[] = [];
+    for (const binding of paperTasks) {
+      const status = normalizeStatus(taskById.get(binding.taskId)?.status);
+      if (isKilledChatStatus(status)) {
+        killedPaperIds.push(binding.paperId);
+      } else if (isRunningChatStatus(status)) {
+        runningPaperIds.push(binding.paperId);
+      }
+    }
 
     return NextResponse.json({
       runningPaperIds,

@@ -771,6 +771,14 @@ export function PaperDashboard({
   const loadSentinelRef = useRef<HTMLDivElement | null>(null);
   const loadRequestSeqRef = useRef(0);
   const { favorites, isFavorite, toggleFavorite, addFavorite } = useFavorites();
+  const runningChatFilterIds = useMemo(
+    () => Array.from(runningChatPaperIds).filter((paperId) => !killedChatPaperIds.has(paperId)),
+    [killedChatPaperIds, runningChatPaperIds],
+  );
+  const killedChatFilterIds = useMemo(
+    () => Array.from(killedChatPaperIds),
+    [killedChatPaperIds],
+  );
 
   // Re-sync from server-provided prop when it changes (router.refresh, navigation, etc.).
   // Adjusting state during render is the React-19 endorsed pattern over useEffect.
@@ -812,9 +820,9 @@ export function PaperDashboard({
         (filter === "favorites"
           ? Array.from(favorites)
           : filter === "running_chat"
-            ? Array.from(runningChatPaperIds)
+            ? runningChatFilterIds
             : filter === "killed_chat"
-              ? Array.from(killedChatPaperIds)
+              ? killedChatFilterIds
               : undefined);
 
       if (ids?.length) {
@@ -850,7 +858,7 @@ export function PaperDashboard({
         }
       }
     },
-    [favorites, killedChatPaperIds, runningChatPaperIds],
+    [favorites, killedChatFilterIds, runningChatFilterIds],
   );
 
   const loadPaperById = useCallback(async (paperId: string) => {
@@ -992,8 +1000,8 @@ export function PaperDashboard({
   const lastCompletedRun = summary.runs.find((run) => run.status === "completed");
   const countsByTag = summary.countsByTag ?? emptyCountsByTag();
   const favoritesCount = favorites.size > 0 ? favorites.size : summary.favoriteCount;
-  const runningChatCount = runningChatPaperIds.size;
-  const killedChatCount = killedChatPaperIds.size;
+  const runningChatCount = runningChatFilterIds.length;
+  const killedChatCount = killedChatFilterIds.length;
   const visiblePapers = useMemo(() => {
     if (activeFilter === "all") {
       return papers;
@@ -1004,7 +1012,9 @@ export function PaperDashboard({
     }
 
     if (activeFilter === "running_chat") {
-      return papers.filter((paper) => runningChatPaperIds.has(paper.id));
+      return papers.filter(
+        (paper) => runningChatPaperIds.has(paper.id) && !killedChatPaperIds.has(paper.id),
+      );
     }
 
     if (activeFilter === "killed_chat") {
@@ -1079,10 +1089,20 @@ export function PaperDashboard({
 
     void refreshChatStatus();
     const interval = window.setInterval(refreshChatStatus, CHAT_STATUS_POLL_MS);
+    function refreshWhenVisible() {
+      if (document.visibilityState === "visible") {
+        void refreshChatStatus();
+      }
+    }
+
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
 
     return () => {
       cancelled = true;
       window.clearInterval(interval);
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, [summary.totalPapers]);
 
@@ -1357,10 +1377,10 @@ export function PaperDashboard({
                 paper={paper}
                 timeZone={timeZone}
                 chatStatus={
-                  runningChatPaperIds.has(paper.id)
-                    ? "running"
-                    : killedChatPaperIds.has(paper.id)
-                      ? "killed"
+                  killedChatPaperIds.has(paper.id)
+                    ? "killed"
+                    : runningChatPaperIds.has(paper.id)
+                      ? "running"
                       : null
                 }
                 isFavorite={isFavorite(paper.id)}
