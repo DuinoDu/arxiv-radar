@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, FileText, Globe2, MessageSquare } from "lucide-react";
 import {
-  ChatView,
+  ChatProvider,
+  MessageInput,
+  MessageList,
+  RuntimeStatusBar,
   createRestAdapter,
   type ChatViewLabels,
 } from "@love-moon/app-sdk/react";
@@ -23,7 +26,7 @@ function chatPath(paper: AnalyzedPaper, view: WorkspaceView) {
 // server-side only.
 const adapter = createRestAdapter({ baseUrl: "/api/conductor" });
 
-const CHAT_LABELS: Partial<ChatViewLabels> = {
+const CHAT_LABELS: ChatViewLabels = {
   inputPlaceholder: "输入问题",
   send: "发送",
   interrupt: "停止",
@@ -31,6 +34,7 @@ const CHAT_LABELS: Partial<ChatViewLabels> = {
   statusToolCall: "调用工具…",
   statusAwaitingUser: "等待输入",
   statusDone: "完成",
+  restart: "重启",
   loadEarlier: "加载更早消息",
 };
 
@@ -206,13 +210,27 @@ export function PaperChat({ paper }: { paper: AnalyzedPaper }) {
             加载中…
           </div>
         ) : (
-          <ChatView
-            taskId={taskId}
-            adapter={adapter}
-            labels={CHAT_LABELS}
-            onError={handleChatError}
-            className="absolute inset-0"
-          />
+          // Manual composition (instead of `<ChatView>`) so we can put the
+          // runtime status bar above the input (the SDK's <ChatView> hard-codes
+          // it at the top of the panel). `conductor-chat-view` is kept as the
+          // wrapper class so the SDK's component CSS applies, and globals.css
+          // overrides the SDK's `display: grid` to a flex column to drive the
+          // ordering from DOM order.
+          <div
+            className="conductor-chat-view absolute inset-0"
+            data-task-id={taskId}
+            data-layout="auto"
+          >
+            <ChatProvider
+              taskId={taskId}
+              adapter={adapter}
+              onError={handleChatError}
+            >
+              <MessageList labels={CHAT_LABELS} />
+              <RuntimeStatusBar labels={CHAT_LABELS} />
+              <MessageInput labels={CHAT_LABELS} />
+            </ChatProvider>
+          </div>
         )}
       </div>
     </section>
