@@ -779,6 +779,10 @@ export function PaperDashboard({
     () => papers.reduce((count, paper) => (favorites.has(paper.id) ? count + 1 : count), 0),
     [favorites, papers],
   );
+  const runningChatCount = useMemo(
+    () => papers.reduce((count, paper) => (runningChatPaperIds.has(paper.id) ? count + 1 : count), 0),
+    [papers, runningChatPaperIds],
+  );
   const visiblePapers = useMemo(() => {
     if (activeFilter === "all") {
       return papers;
@@ -788,14 +792,20 @@ export function PaperDashboard({
       return papers.filter((paper) => favorites.has(paper.id));
     }
 
+    if (activeFilter === "running_chat") {
+      return papers.filter((paper) => runningChatPaperIds.has(paper.id));
+    }
+
     return papers.filter((paper) => paper.tags.includes(activeFilter));
-  }, [activeFilter, favorites, papers]);
+  }, [activeFilter, favorites, papers, runningChatPaperIds]);
   const listTitle =
     activeFilter === "all"
       ? "论文列表"
       : activeFilter === "favorites"
         ? "收藏论文"
-        : `${tagLabels[activeFilter]} 论文`;
+        : activeFilter === "running_chat"
+          ? "running chat 论文"
+          : `${tagLabels[activeFilter]} 论文`;
 
   useEffect(() => {
     function handlePopState() {
@@ -1015,6 +1025,14 @@ export function PaperDashboard({
                 />
               }
               label="收藏"
+              onSelect={selectFilter}
+            />
+            <FilterLink
+              active={activeFilter === "running_chat"}
+              count={runningChatCount}
+              filter="running_chat"
+              icon={<MessageCircle className="h-4 w-4" aria-hidden="true" />}
+              label="running chat"
               onSelect={selectFilter}
             />
           </nav>
