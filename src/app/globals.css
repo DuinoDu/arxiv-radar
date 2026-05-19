@@ -66,7 +66,7 @@ summary::-webkit-details-marker {
   --conductor-text: #09090b;
   --conductor-text-muted: rgb(82 82 91);
   --conductor-bubble-user: #a1a1aa;
-  --conductor-bubble-assistant: #ffffff;
+  --conductor-bubble-assistant: #e4e4e7;
   --conductor-border: #e4e4e7;
   --conductor-radius: 8px;
   /* --accent: keep zinc for hover/focus rings; the active "send" button
@@ -80,7 +80,7 @@ summary::-webkit-details-marker {
   --conductor-text: #fafafa;
   --conductor-text-muted: rgb(161 161 170);
   --conductor-bubble-user: #52525b;
-  --conductor-bubble-assistant: #18181b;
+  --conductor-bubble-assistant: #27272a;
   --conductor-border: #27272a;
   --accent: #fafafa;
 }
@@ -141,7 +141,7 @@ summary::-webkit-details-marker {
 .conductor-chat-view .conductor-message[data-role="system"] .conductor-bubble {
   background: var(--conductor-bubble-assistant);
   color: var(--conductor-text);
-  border-color: #e4e4e7;
+  border-color: #d4d4d8;
 }
 
 /* --- Bubble colors (dark) --- */
@@ -158,7 +158,7 @@ summary::-webkit-details-marker {
 .dark .conductor-chat-view .conductor-message[data-role="system"] .conductor-bubble {
   background: var(--conductor-bubble-assistant);
   color: var(--conductor-text);
-  border-color: #27272a;
+  border-color: #3f3f46;
 }
 
 /* --- Input textarea --- */
