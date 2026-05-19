@@ -61,6 +61,15 @@ export interface AnalysisRun {
   message?: string;
 }
 
+export interface PaperTaskBinding {
+  /** Conductor task id. The chat history lives inside this task. */
+  taskId: string;
+  /** Conductor project id. */
+  projectId: string;
+  /** ISO 8601, set at first bind. */
+  createdAt: string;
+}
+
 export interface ArxivState {
   version: 1;
   updatedAt: string;
@@ -68,6 +77,12 @@ export interface ArxivState {
   favoriteIds: string[];
   papers: AnalyzedPaper[];
   runs: AnalysisRun[];
+  /**
+   * Per-paper Conductor task binding. Created lazily by
+   * `POST /api/conductor/bind` and reused for the lifetime of the paper.
+   * The chat transcript itself lives in Conductor, not here.
+   */
+  paperTasks?: Record<string, PaperTaskBinding>;
 }
 
 export interface RunArxivAnalysisOptions {

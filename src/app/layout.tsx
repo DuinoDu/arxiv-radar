@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import "@love-moon/app-sdk/react/styles.css";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { RegisterSW } from "@/components/pwa/RegisterSW";
 
