@@ -73,6 +73,12 @@ const statusStyles: Record<RunStatus, string> = {
   failed: "bg-red-50 text-red-700 ring-red-200 dark:bg-red-950/40 dark:text-red-200 dark:ring-red-900",
 };
 
+const CHAT_STATUS_POLL_MS = 15_000;
+
+type ChatStatusPayload = {
+  runningPaperIds?: unknown;
+};
+
 function formatDate(value: string | undefined, timeZone: string) {
   if (!value) {
     return "暂无";
@@ -370,6 +376,7 @@ function paperCardDomId(id: string) {
 function PaperRow({
   paper,
   timeZone,
+  chatRunning,
   isFavorite,
   highlighted,
   isEditingTags,
@@ -384,6 +391,7 @@ function PaperRow({
 }: {
   paper: AnalyzedPaper;
   timeZone: string;
+  chatRunning: boolean;
   isFavorite: boolean;
   highlighted: boolean;
   isEditingTags: boolean;
@@ -499,11 +507,17 @@ function PaperRow({
             target="_blank"
             rel="noreferrer"
             onClick={() => onChatStart(paper.id)}
-            title="chat"
-            aria-label={`${paper.title} chat`}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-900"
+            title={chatRunning ? "chat 运行中" : "chat"}
+            aria-label={`${paper.title} chat${chatRunning ? " 运行中" : ""}`}
+            className="relative inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-900"
           >
             <MessageCircle className="h-4 w-4" aria-hidden="true" />
+            {chatRunning ? (
+              <span
+                className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-zinc-950"
+                aria-hidden="true"
+              />
+            ) : null}
           </a>
           <a
             href={arxivHtmlUrl(paper)}
@@ -654,7 +668,12 @@ export function PaperDashboard({
   const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null);
   const [papers, setPapers] = useState<AnalyzedPaper[]>(state.papers);
   const [papersSource, setPapersSource] = useState<AnalyzedPaper[]>(state.papers);
+  const [runningChatPaperIds, setRunningChatPaperIds] = useState<Set<string>>(() => new Set());
   const { favorites, isFavorite, toggleFavorite, addFavorite } = useFavorites();
+  const paperListSignature = useMemo(
+    () => papers.map((paper) => paper.id).sort().join("|"),
+    [papers],
+  );
 
   // Re-sync from server-provided prop when it changes (router.refresh, navigation, etc.).
   // Adjusting state during render is the React-19 endorsed pattern over useEffect.
@@ -785,6 +804,44 @@ export function PaperDashboard({
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
+
+  useEffect(() => {
+    if (!paperListSignature) {
+      setRunningChatPaperIds(new Set());
+      return;
+    }
+
+    let cancelled = false;
+
+    async function refreshChatStatus() {
+      try {
+        const response = await fetch("/api/papers/chat-status", {
+          cache: "no-store",
+        });
+        const payload = (await response.json().catch(() => ({}))) as ChatStatusPayload;
+        if (!response.ok || !Array.isArray(payload.runningPaperIds)) {
+          throw new Error("Failed to fetch chat status");
+        }
+
+        const nextIds = payload.runningPaperIds.filter(
+          (paperId): paperId is string => typeof paperId === "string",
+        );
+        if (!cancelled) {
+          setRunningChatPaperIds(new Set(nextIds));
+        }
+      } catch (error) {
+        console.error("refresh chat status failed", error);
+      }
+    }
+
+    void refreshChatStatus();
+    const interval = window.setInterval(refreshChatStatus, CHAT_STATUS_POLL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [paperListSignature]);
 
   useEffect(() => {
     if (!focusedPaperId) {
@@ -958,6 +1015,7 @@ export function PaperDashboard({
                 key={paper.id}
                 paper={paper}
                 timeZone={timeZone}
+                chatRunning={runningChatPaperIds.has(paper.id)}
                 isFavorite={isFavorite(paper.id)}
                 highlighted={focusedPaperId === paper.id}
                 isEditingTags={editingPaperId === paper.id}
