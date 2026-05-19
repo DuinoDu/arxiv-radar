@@ -342,6 +342,33 @@ export async function updatePaperTags(id: string, tags: PaperTag[]) {
   });
 }
 
+export async function markPaperRemoved(id: string): Promise<boolean> {
+  let didMutate = false;
+
+  await mutateArxivState((state) => {
+    const paperIndex = state.papers.findIndex((paper) => paper.id === id);
+    if (paperIndex === -1) {
+      return state;
+    }
+
+    const paper = state.papers[paperIndex];
+    if (paper.removed) {
+      return state;
+    }
+
+    const nextPapers = [...state.papers];
+    nextPapers[paperIndex] = { ...paper, removed: true };
+    didMutate = true;
+
+    return {
+      ...state,
+      papers: nextPapers,
+    };
+  });
+
+  return didMutate;
+}
+
 export async function addManualPaper(paper: AnalyzedPaper) {
   await mutateArxivState((state) => {
     const existingPapers = state.papers.filter((existing) => existing.id !== paper.id);
@@ -400,18 +427,27 @@ export async function clearPaperTaskBindingByTaskId(taskId: string) {
 
 export async function finishRun(run: AnalysisRun, papers: AnalyzedPaper[]) {
   await mutateArxivState((state) => {
-    const paperIds = new Set(papers.map((paper) => paper.id));
+    const removedIds = new Set(
+      state.papers.filter((paper) => paper.removed).map((paper) => paper.id),
+    );
+    // Preserve the `removed` flag across re-analyses so users who hid a paper
+    // don't see it pop back into the UI after the next cron run.
+    const mergedPapers = papers.map((paper) =>
+      removedIds.has(paper.id) ? { ...paper, removed: true } : paper,
+    );
+
+    const paperIds = new Set(mergedPapers.map((paper) => paper.id));
     const existingPapers = state.papers.filter((paper) => !paperIds.has(paper.id));
     const processedArticleIds = new Set(state.processedArticleIds);
 
-    for (const paper of papers) {
+    for (const paper of mergedPapers) {
       processedArticleIds.add(paper.id);
     }
 
     return {
       ...state,
       processedArticleIds: Array.from(processedArticleIds),
-      papers: [...papers, ...existingPapers],
+      papers: [...mergedPapers, ...existingPapers],
       runs: [run, ...state.runs.filter((existingRun) => existingRun.id !== run.id)],
     };
   });

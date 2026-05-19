@@ -38,6 +38,12 @@ export interface AnalyzedPaper extends ArxivArticle {
   confidence?: number;
   analyzedAt: string;
   runId: string;
+  /**
+   * When true, this paper is hidden from the frontend. We keep the row in
+   * storage (rather than deleting it) so the next analysis run doesn't
+   * silently re-add it via the processed-id dedupe path.
+   */
+  removed?: boolean;
 }
 
 export interface PaperFailure {

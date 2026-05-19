@@ -15,6 +15,7 @@ import {
   Plus,
   Tag,
   Radio,
+  Trash2,
   Workflow,
   X,
 } from "lucide-react";
@@ -372,22 +373,28 @@ function PaperRow({
   isFavorite,
   highlighted,
   isEditingTags,
+  removePending,
   onToggleFavorite,
   onChatStart,
   onStartTagEdit,
   onCancelTagEdit,
   onTagsChange,
+  onRemoveClick,
+  onRemoveCancel,
 }: {
   paper: AnalyzedPaper;
   timeZone: string;
   isFavorite: boolean;
   highlighted: boolean;
   isEditingTags: boolean;
+  removePending: boolean;
   onToggleFavorite: (id: string) => void;
   onChatStart: (id: string) => void;
   onStartTagEdit: (id: string) => void;
   onCancelTagEdit: () => void;
   onTagsChange: (id: string, tags: PaperTag[]) => void;
+  onRemoveClick: (id: string) => void;
+  onRemoveCancel: () => void;
 }) {
   const detailItems = [
     ["假设", paper.hypothesis],
@@ -530,6 +537,29 @@ function PaperRow({
               <GithubIcon className="h-4 w-4" />
             </button>
           )}
+          {removePending ? (
+            <button
+              type="button"
+              onClick={() => onRemoveClick(paper.id)}
+              onBlur={onRemoveCancel}
+              title="再次点击确认删除"
+              aria-label={`${paper.title} 确认删除`}
+              className="inline-flex h-9 items-center gap-1 rounded-md border border-red-300 bg-red-50 px-2 text-xs font-semibold text-red-700 transition hover:bg-red-100 dark:border-red-900 dark:bg-red-950/60 dark:text-red-200 dark:hover:bg-red-950"
+            >
+              <Trash2 className="h-4 w-4" aria-hidden="true" />
+              remove?
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onRemoveClick(paper.id)}
+              title="删除（前端不再显示）"
+              aria-label={`${paper.title} 删除`}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 text-zinc-700 transition hover:border-red-300 hover:bg-red-50 hover:text-red-600 dark:border-zinc-800 dark:text-zinc-200 dark:hover:border-red-900 dark:hover:bg-red-950/40 dark:hover:text-red-300"
+            >
+              <Trash2 className="h-4 w-4" aria-hidden="true" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -621,6 +651,7 @@ export function PaperDashboard({
   const [activeFilter, setActiveFilter] = useState(initialFilter);
   const [focusedPaperId, setFocusedPaperId] = useState<string | null>(null);
   const [editingPaperId, setEditingPaperId] = useState<string | null>(null);
+  const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null);
   const [papers, setPapers] = useState<AnalyzedPaper[]>(state.papers);
   const [papersSource, setPapersSource] = useState<AnalyzedPaper[]>(state.papers);
   const { favorites, isFavorite, toggleFavorite, addFavorite } = useFavorites();
@@ -630,6 +661,7 @@ export function PaperDashboard({
   if (papersSource !== state.papers) {
     setPapersSource(state.papers);
     setPapers(state.papers);
+    setPendingRemoveId(null);
   }
 
   const handleStartTagEdit = useCallback((paperId: string) => {
@@ -677,6 +709,48 @@ export function PaperDashboard({
         }
       });
   }, []);
+
+  const handleRemoveCancel = useCallback(() => {
+    setPendingRemoveId(null);
+  }, []);
+
+  const handleRemoveClick = useCallback((paperId: string) => {
+    // Two-stage inplace confirm:
+    //   1st click → enter pending state (button label becomes "remove?")
+    //   2nd click → actually remove the paper from the UI and notify the server.
+    setPendingRemoveId((current) => {
+      if (current !== paperId) {
+        return paperId;
+      }
+
+      const removedPaper = papers.find((paper) => paper.id === paperId);
+
+      setPapers((prev) => prev.filter((paper) => paper.id !== paperId));
+
+      void fetch(`/api/papers/${encodeURIComponent(paperId)}/remove`, {
+        method: "POST",
+      })
+        .then(async (response) => {
+          const payload = await response.json().catch(() => ({ ok: false }));
+          if (!response.ok || !payload?.ok) {
+            throw new Error(payload?.error || "删除论文失败");
+          }
+        })
+        .catch((error) => {
+          console.error("remove paper failed", error);
+          if (removedPaper) {
+            // Roll back the optimistic removal so the user can retry.
+            setPapers((prev) =>
+              prev.some((paper) => paper.id === paperId)
+                ? prev
+                : [removedPaper, ...prev],
+            );
+          }
+        });
+
+      return null;
+    });
+  }, [papers]);
 
   const lastRun = state.runs[0];
   const lastCompletedRun = state.runs.find((run) => run.status === "completed");
@@ -887,11 +961,14 @@ export function PaperDashboard({
                 isFavorite={isFavorite(paper.id)}
                 highlighted={focusedPaperId === paper.id}
                 isEditingTags={editingPaperId === paper.id}
+                removePending={pendingRemoveId === paper.id}
                 onToggleFavorite={toggleFavorite}
                 onChatStart={addFavorite}
                 onStartTagEdit={handleStartTagEdit}
                 onCancelTagEdit={handleCancelTagEdit}
                 onTagsChange={handleTagsChange}
+                onRemoveClick={handleRemoveClick}
+                onRemoveCancel={handleRemoveCancel}
               />
             ))
           ) : (
