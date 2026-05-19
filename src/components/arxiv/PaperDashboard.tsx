@@ -665,6 +665,7 @@ export function PaperDashboard({
   const [activeFilter, setActiveFilter] = useState(initialFilter);
   const [focusedPaperId, setFocusedPaperId] = useState<string | null>(null);
   const [editingPaperId, setEditingPaperId] = useState<string | null>(null);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null);
   const [papers, setPapers] = useState<AnalyzedPaper[]>(state.papers);
   const [papersSource, setPapersSource] = useState<AnalyzedPaper[]>(state.papers);
@@ -888,44 +889,64 @@ export function PaperDashboard({
 
   function selectFilter(filter: TagFilter) {
     if (filter === activeFilter) {
+      setMobileFiltersOpen(false);
       return;
     }
 
     setActiveFilter(filter);
+    setMobileFiltersOpen(false);
     window.history.pushState({ tag: filter }, "", currentUrlForFilter(filter));
   }
 
   return (
     <main className="min-h-screen bg-zinc-50 text-zinc-950 dark:bg-zinc-950 dark:text-white">
       <header className="sticky top-0 z-20 border-b border-zinc-200 bg-white/95 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-xl font-semibold tracking-normal text-zinc-950 dark:text-white">arxiv-radar</h1>
+        <div className="mx-auto max-w-7xl px-3 py-2 sm:px-6 md:py-4 lg:px-8">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-1.5 md:gap-3">
+              <h1 className="truncate text-xl font-semibold tracking-normal text-zinc-950 dark:text-white">arxiv-radar</h1>
+              <button
+                type="button"
+                onClick={() => setMobileFiltersOpen((open) => !open)}
+                aria-expanded={mobileFiltersOpen}
+                aria-controls="mobile-paper-filters"
+                aria-label={mobileFiltersOpen ? "隐藏标签筛选" : "展开标签筛选"}
+                title={mobileFiltersOpen ? "隐藏标签筛选" : "展开标签筛选"}
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-950 md:hidden dark:text-zinc-300 dark:hover:bg-zinc-900 dark:hover:text-white"
+              >
+                <ChevronDown
+                  className={`h-4 w-4 transition-transform ${mobileFiltersOpen ? "rotate-180" : ""}`}
+                  aria-hidden="true"
+                />
+              </button>
               {lastRun ? (
                 <span
-                  className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${statusStyles[lastRun.status]}`}
+                  className={`hidden rounded-full px-2.5 py-1 text-xs font-medium ring-1 md:inline-flex ${statusStyles[lastRun.status]}`}
                 >
                   {statusLabels[lastRun.status]}
                 </span>
               ) : null}
             </div>
 
-            <div className="flex items-start gap-3">
+            <div className="hidden items-start gap-3 md:flex">
               <ThemeToggle />
               <ManualAddButton onPaperExists={focusExistingPaper} />
               <RunAnalysisButton disabled={disableManualRun} />
             </div>
           </div>
 
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-3 hidden flex-wrap gap-2 md:flex">
             <MetricPill label="保存" value={papers.length} />
             <MetricPill label="处理" value={state.processedArticleIds.length} />
             <MetricPill label="上次新增" value={lastCompletedRun ? lastCompletedRun.analyzedCount : 0} />
             <MetricPill label="更新" value={formatDate(state.updatedAt, timeZone)} />
           </div>
 
-          <nav className="mt-3 flex flex-wrap gap-2" aria-label="论文筛选">
+          <nav
+            id="mobile-paper-filters"
+            className={`${mobileFiltersOpen ? "mt-2 flex" : "hidden"} flex-wrap gap-2 md:mt-3 md:flex`}
+            aria-label="论文筛选"
+          >
             <FilterLink
               active={activeFilter === "all"}
               count={papers.length}
@@ -1000,8 +1021,8 @@ export function PaperDashboard({
         </div>
       </header>
 
-      <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
-        <div className="mb-3 flex items-center justify-between gap-3">
+      <div className="mx-auto max-w-7xl px-3 py-3 sm:px-6 md:py-5 lg:px-8">
+        <div className="mb-3 hidden items-center justify-between gap-3 md:flex">
           <h2 className="text-lg font-semibold tracking-normal">{listTitle}</h2>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
             {visiblePapers.length} / {papers.length}
