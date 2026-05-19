@@ -44,41 +44,49 @@ export function PaperReader({ mode, paper }: { mode: ReaderMode; paper: Analyzed
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
+          {/* Tab group: icon-only on mobile (text label hidden), icon + text
+              on desktop. Padding tightens on mobile to keep the group from
+              fighting other top-bar items for space. */}
           <div className="inline-flex h-8 overflow-hidden rounded-md border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900">
             <Link
               href={chatPath(paper, "pdf")}
               scroll={false}
               aria-pressed={mode === "pdf"}
-              className={`inline-flex items-center gap-1.5 px-2.5 text-xs font-medium transition ${
+              aria-label="PDF"
+              title="PDF"
+              className={`inline-flex w-9 items-center justify-center text-xs font-medium transition lg:w-auto lg:gap-1.5 lg:px-2.5 ${
                 mode === "pdf"
                   ? "bg-zinc-950 text-white dark:bg-white dark:text-zinc-950"
                   : "text-zinc-600 hover:bg-white dark:text-zinc-300 dark:hover:bg-zinc-800"
               }`}
             >
               <FileText className="h-4 w-4" aria-hidden="true" />
-              PDF
+              <span className="hidden lg:inline">PDF</span>
             </Link>
             <Link
               href={chatPath(paper, "html")}
               scroll={false}
               aria-pressed={mode === "html"}
-              className={`inline-flex items-center gap-1.5 border-l border-zinc-200 px-2.5 text-xs font-medium transition dark:border-zinc-800 ${
+              aria-label="HTML"
+              title="HTML"
+              className={`inline-flex w-9 items-center justify-center border-l border-zinc-200 text-xs font-medium transition dark:border-zinc-800 lg:w-auto lg:gap-1.5 lg:px-2.5 ${
                 mode === "html"
                   ? "bg-zinc-950 text-white dark:bg-white dark:text-zinc-950"
                   : "text-zinc-600 hover:bg-white dark:text-zinc-300 dark:hover:bg-zinc-800"
               }`}
             >
               <Globe2 className="h-4 w-4" aria-hidden="true" />
-              HTML
+              <span className="hidden lg:inline">HTML</span>
             </Link>
             <Link
               href={chatPath(paper, "chat")}
               scroll={false}
               aria-pressed={false}
-              className="inline-flex items-center gap-1.5 border-l border-zinc-200 px-2.5 text-xs font-medium text-zinc-600 transition hover:bg-white dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800 lg:hidden"
+              aria-label="Chat"
+              title="Chat"
+              className="inline-flex w-9 items-center justify-center border-l border-zinc-200 text-zinc-600 transition hover:bg-white dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800 lg:hidden"
             >
               <MessageSquare className="h-4 w-4" aria-hidden="true" />
-              Chat
             </Link>
           </div>
 

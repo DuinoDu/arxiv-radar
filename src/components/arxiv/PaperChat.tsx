@@ -341,33 +341,39 @@ export function PaperChat({ paper }: { paper: AnalyzedPaper }) {
               onRestart={handleRestartTask}
             />
           ) : null}
+          {/* Mobile-only tab group. Icon-only to save horizontal real estate
+              alongside the status badge. Accessible name comes from aria-label
+              / title since the visual label is dropped. */}
           <div className="inline-flex h-8 shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900">
             <Link
               href={chatPath(paper, "pdf")}
               scroll={false}
               aria-pressed={false}
-              className="inline-flex items-center gap-1.5 px-2.5 text-xs font-medium text-zinc-600 transition hover:bg-white dark:text-zinc-300 dark:hover:bg-zinc-800"
+              aria-label="PDF"
+              title="PDF"
+              className="inline-flex w-9 items-center justify-center text-zinc-600 transition hover:bg-white dark:text-zinc-300 dark:hover:bg-zinc-800"
             >
               <FileText className="h-4 w-4" aria-hidden="true" />
-              PDF
             </Link>
             <Link
               href={chatPath(paper, "html")}
               scroll={false}
               aria-pressed={false}
-              className="inline-flex items-center gap-1.5 border-l border-zinc-200 px-2.5 text-xs font-medium text-zinc-600 transition hover:bg-white dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              aria-label="HTML"
+              title="HTML"
+              className="inline-flex w-9 items-center justify-center border-l border-zinc-200 text-zinc-600 transition hover:bg-white dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800"
             >
               <Globe2 className="h-4 w-4" aria-hidden="true" />
-              HTML
             </Link>
             <Link
               href={chatPath(paper, "chat")}
               scroll={false}
               aria-pressed
-              className="inline-flex items-center gap-1.5 border-l border-zinc-200 bg-zinc-950 px-2.5 text-xs font-medium text-white dark:border-zinc-800 dark:bg-white dark:text-zinc-950"
+              aria-label="Chat"
+              title="Chat"
+              className="inline-flex w-9 items-center justify-center border-l border-zinc-200 bg-zinc-950 text-white dark:border-zinc-800 dark:bg-white dark:text-zinc-950"
             >
               <MessageSquare className="h-4 w-4" aria-hidden="true" />
-              Chat
             </Link>
           </div>
         </div>
