@@ -65,8 +65,8 @@ summary::-webkit-details-marker {
   --conductor-paper: #ffffff;
   --conductor-text: #09090b;
   --conductor-text-muted: rgb(82 82 91);
-  --conductor-bubble-user: #e4e4e7;
-  --conductor-bubble-assistant: #f4f4f5;
+  --conductor-bubble-user: #d4d4d8;
+  --conductor-bubble-assistant: #fafafa;
   --conductor-border: #e4e4e7;
   --conductor-radius: 8px;
   /* --accent: keep zinc for hover/focus rings; the active "send" button
@@ -79,7 +79,7 @@ summary::-webkit-details-marker {
   --conductor-paper: #09090b;
   --conductor-text: #fafafa;
   --conductor-text-muted: rgb(161 161 170);
-  --conductor-bubble-user: #27272a;
+  --conductor-bubble-user: #3f3f46;
   --conductor-bubble-assistant: #18181b;
   --conductor-border: #27272a;
   --accent: #fafafa;
@@ -133,7 +133,7 @@ summary::-webkit-details-marker {
 .conductor-chat-view .conductor-message[data-role="sdk"] .conductor-bubble {
   background: var(--conductor-bubble-user);
   color: var(--conductor-text);
-  border-color: #d4d4d8;
+  border-color: #a1a1aa;
 }
 
 .conductor-chat-view .conductor-message--assistant .conductor-bubble,
@@ -141,7 +141,7 @@ summary::-webkit-details-marker {
 .conductor-chat-view .conductor-message[data-role="system"] .conductor-bubble {
   background: var(--conductor-bubble-assistant);
   color: var(--conductor-text);
-  border-color: #e4e4e7;
+  border-color: #d4d4d8;
 }
 
 /* --- Bubble colors (dark) --- */
@@ -150,7 +150,7 @@ summary::-webkit-details-marker {
 .dark .conductor-chat-view .conductor-message[data-role="sdk"] .conductor-bubble {
   background: var(--conductor-bubble-user);
   color: var(--conductor-text);
-  border-color: #3f3f46;
+  border-color: #52525b;
 }
 
 .dark .conductor-chat-view .conductor-message--assistant .conductor-bubble,
