@@ -20,7 +20,20 @@ import {
   X,
 } from "lucide-react";
 import { parseTagFilter, tagLabels, type TagFilter } from "@/lib/arxiv/filters";
-import { PAPER_TAGS, type AnalyzedPaper, type ArxivState, type PaperTag, type RunStatus } from "@/lib/arxiv/types";
+import {
+  PAPER_TAGS,
+  type AnalysisRun,
+  type AnalyzedPaper,
+  type PaperTag,
+  type RunStatus,
+} from "@/lib/arxiv/types";
+import {
+  PAPER_LIST_PAGE_SIZE,
+  type PaperCountsByTag,
+  type PaperListInitialData,
+  type PaperListPage,
+  type PaperListSummary,
+} from "@/lib/arxiv/paper-list";
 import { ManualAddButton } from "@/components/arxiv/ManualAddButton";
 import { RunAnalysisButton } from "@/components/arxiv/RunAnalysisButton";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
@@ -82,6 +95,50 @@ type ChatStatusPayload = {
   killedPaperIds?: unknown;
 };
 
+type PaperListPayload = Partial<PaperListPage> & {
+  ok?: boolean;
+  error?: string;
+};
+
+function emptyCountsByTag(): PaperCountsByTag {
+  return Object.fromEntries(PAPER_TAGS.map((tag) => [tag, 0])) as PaperCountsByTag;
+}
+
+function mergePaperLists(
+  current: AnalyzedPaper[],
+  incoming: AnalyzedPaper[],
+): AnalyzedPaper[] {
+  const seen = new Set<string>();
+  const merged: AnalyzedPaper[] = [];
+
+  for (const paper of [...current, ...incoming]) {
+    if (seen.has(paper.id)) continue;
+    seen.add(paper.id);
+    merged.push(paper);
+  }
+
+  return merged;
+}
+
+function sameStringSet(current: ReadonlySet<string>, next: readonly string[]) {
+  if (current.size !== next.length) return false;
+  return next.every((value) => current.has(value));
+}
+
+function knownPaperListPayload(payload: PaperListPayload): payload is PaperListPage {
+  return (
+    Array.isArray(payload.papers) &&
+    typeof payload.total === "number" &&
+    typeof payload.offset === "number" &&
+    typeof payload.limit === "number" &&
+    typeof payload.hasMore === "boolean"
+  );
+}
+
+function pageEndOffset(page: PaperListPage) {
+  return page.offset + page.papers.length;
+}
+
 function ChatStatusDot({
   className = "",
   status,
@@ -132,14 +189,6 @@ function formatAuthors(authors: string[]) {
   }
 
   return `${authors.slice(0, 4).join(", ")} 等 ${authors.length} 人`;
-}
-
-function tagCount(papers: AnalyzedPaper[], tag: PaperTag) {
-  return papers.filter((paper) => paper.tags.includes(tag)).length;
-}
-
-function tagCounts(papers: AnalyzedPaper[]) {
-  return Object.fromEntries(PAPER_TAGS.map((tag) => [tag, tagCount(papers, tag)])) as Record<PaperTag, number>;
 }
 
 function knownPaperTags(tags: readonly string[]) {
@@ -663,7 +712,7 @@ function PaperRow({
   );
 }
 
-function RecentRuns({ runs, timeZone }: { runs: ArxivState["runs"]; timeZone: string }) {
+function RecentRuns({ runs, timeZone }: { runs: AnalysisRun[]; timeZone: string }) {
   if (runs.length === 0) {
     return null;
   }
@@ -694,13 +743,13 @@ function RecentRuns({ runs, timeZone }: { runs: ArxivState["runs"]; timeZone: st
 
 export function PaperDashboard({
   disableManualRun = false,
+  initialData,
   initialFilter,
-  state,
   timeZone,
 }: {
   disableManualRun?: boolean;
+  initialData: PaperListInitialData;
   initialFilter: TagFilter;
-  state: ArxivState;
   timeZone: string;
 }) {
   const [activeFilter, setActiveFilter] = useState(initialFilter);
@@ -708,23 +757,120 @@ export function PaperDashboard({
   const [editingPaperId, setEditingPaperId] = useState<string | null>(null);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null);
-  const [papers, setPapers] = useState<AnalyzedPaper[]>(state.papers);
-  const [papersSource, setPapersSource] = useState<AnalyzedPaper[]>(state.papers);
+  const [summary, setSummary] = useState<PaperListSummary>(initialData.summary);
+  const [summarySource, setSummarySource] = useState(initialData.summary);
+  const [papers, setPapers] = useState<AnalyzedPaper[]>(initialData.page.papers);
+  const [papersSource, setPapersSource] = useState(initialData.page.papers);
+  const [listTotal, setListTotal] = useState(initialData.page.total);
+  const [hasMorePapers, setHasMorePapers] = useState(initialData.page.hasMore);
+  const [nextPageOffset, setNextPageOffset] = useState(() => pageEndOffset(initialData.page));
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [runningChatPaperIds, setRunningChatPaperIds] = useState<Set<string>>(() => new Set());
   const [killedChatPaperIds, setKilledChatPaperIds] = useState<Set<string>>(() => new Set());
+  const loadSentinelRef = useRef<HTMLDivElement | null>(null);
+  const loadRequestSeqRef = useRef(0);
   const { favorites, isFavorite, toggleFavorite, addFavorite } = useFavorites();
-  const paperListSignature = useMemo(
-    () => papers.map((paper) => paper.id).sort().join("|"),
-    [papers],
-  );
 
   // Re-sync from server-provided prop when it changes (router.refresh, navigation, etc.).
   // Adjusting state during render is the React-19 endorsed pattern over useEffect.
-  if (papersSource !== state.papers) {
-    setPapersSource(state.papers);
-    setPapers(state.papers);
+  if (summarySource !== initialData.summary) {
+    setSummarySource(initialData.summary);
+    setSummary(initialData.summary);
+  }
+
+  if (papersSource !== initialData.page.papers) {
+    setPapersSource(initialData.page.papers);
+    setPapers(initialData.page.papers);
+    setListTotal(initialData.page.total);
+    setHasMorePapers(initialData.page.hasMore);
+    setNextPageOffset(pageEndOffset(initialData.page));
+    setLoadError(null);
     setPendingRemoveId(null);
   }
+
+  const loadPaperPage = useCallback(
+    async (
+      filter: TagFilter,
+      options: {
+        append?: boolean;
+        offset?: number;
+        ids?: readonly string[];
+      } = {},
+    ) => {
+      const requestSeq = loadRequestSeqRef.current + 1;
+      loadRequestSeqRef.current = requestSeq;
+      const append = options.append === true;
+      const offset = options.offset ?? 0;
+      const params = new URLSearchParams({
+        tag: filter,
+        offset: String(offset),
+        limit: String(PAPER_LIST_PAGE_SIZE),
+      });
+      const ids =
+        options.ids ??
+        (filter === "favorites"
+          ? Array.from(favorites)
+          : filter === "running_chat"
+            ? Array.from(runningChatPaperIds)
+            : filter === "killed_chat"
+              ? Array.from(killedChatPaperIds)
+              : undefined);
+
+      if (ids?.length) {
+        params.set("ids", ids.join(","));
+      }
+
+      setLoadingMore(true);
+      setLoadError(null);
+
+      try {
+        const response = await fetch(`/api/papers?${params.toString()}`, {
+          cache: "no-store",
+        });
+        const payload = (await response.json().catch(() => ({}))) as PaperListPayload;
+        if (!response.ok || !knownPaperListPayload(payload)) {
+          throw new Error(payload.error || "加载论文失败");
+        }
+        if (loadRequestSeqRef.current !== requestSeq) return;
+
+        setPapers((current) =>
+          append ? mergePaperLists(current, payload.papers) : payload.papers,
+        );
+        setListTotal(payload.total);
+        setHasMorePapers(payload.hasMore);
+        setNextPageOffset(pageEndOffset(payload));
+      } catch (error) {
+        if (loadRequestSeqRef.current === requestSeq) {
+          setLoadError((error as Error).message);
+        }
+      } finally {
+        if (loadRequestSeqRef.current === requestSeq) {
+          setLoadingMore(false);
+        }
+      }
+    },
+    [favorites, killedChatPaperIds, runningChatPaperIds],
+  );
+
+  const loadPaperById = useCallback(async (paperId: string) => {
+    const params = new URLSearchParams({
+      tag: "all",
+      id: paperId,
+      offset: "0",
+      limit: "1",
+    });
+
+    const response = await fetch(`/api/papers?${params.toString()}`, {
+      cache: "no-store",
+    });
+    const payload = (await response.json().catch(() => ({}))) as PaperListPayload;
+    if (!response.ok || !knownPaperListPayload(payload) || payload.papers.length === 0) {
+      return null;
+    }
+
+    return payload.papers[0] ?? null;
+  }, []);
 
   const handleStartTagEdit = useCallback((paperId: string) => {
     setEditingPaperId(paperId);
@@ -788,6 +934,21 @@ export function PaperDashboard({
       const removedPaper = papers.find((paper) => paper.id === paperId);
 
       setPapers((prev) => prev.filter((paper) => paper.id !== paperId));
+      if (removedPaper) {
+        setListTotal((count) => Math.max(0, count - 1));
+        setNextPageOffset((offset) => Math.max(0, offset - 1));
+        setSummary((current) => {
+          const nextCounts = { ...current.countsByTag };
+          for (const tag of removedPaper.tags) {
+            nextCounts[tag] = Math.max(0, nextCounts[tag] - 1);
+          }
+          return {
+            ...current,
+            totalPapers: Math.max(0, current.totalPapers - 1),
+            countsByTag: nextCounts,
+          };
+        });
+      }
 
       void fetch(`/api/papers/${encodeURIComponent(paperId)}/remove`, {
         method: "POST",
@@ -807,6 +968,19 @@ export function PaperDashboard({
                 ? prev
                 : [removedPaper, ...prev],
             );
+            setListTotal((count) => count + 1);
+            setNextPageOffset((offset) => offset + 1);
+            setSummary((current) => {
+              const nextCounts = { ...current.countsByTag };
+              for (const tag of removedPaper.tags) {
+                nextCounts[tag] += 1;
+              }
+              return {
+                ...current,
+                totalPapers: current.totalPapers + 1,
+                countsByTag: nextCounts,
+              };
+            });
           }
         });
 
@@ -814,21 +988,12 @@ export function PaperDashboard({
     });
   }, [papers]);
 
-  const lastRun = state.runs[0];
-  const lastCompletedRun = state.runs.find((run) => run.status === "completed");
-  const countsByTag = useMemo(() => tagCounts(papers), [papers]);
-  const favoritesCount = useMemo(
-    () => papers.reduce((count, paper) => (favorites.has(paper.id) ? count + 1 : count), 0),
-    [favorites, papers],
-  );
-  const runningChatCount = useMemo(
-    () => papers.reduce((count, paper) => (runningChatPaperIds.has(paper.id) ? count + 1 : count), 0),
-    [papers, runningChatPaperIds],
-  );
-  const killedChatCount = useMemo(
-    () => papers.reduce((count, paper) => (killedChatPaperIds.has(paper.id) ? count + 1 : count), 0),
-    [killedChatPaperIds, papers],
-  );
+  const lastRun = summary.runs[0];
+  const lastCompletedRun = summary.runs.find((run) => run.status === "completed");
+  const countsByTag = summary.countsByTag ?? emptyCountsByTag();
+  const favoritesCount = favorites.size > 0 ? favorites.size : summary.favoriteCount;
+  const runningChatCount = runningChatPaperIds.size;
+  const killedChatCount = killedChatPaperIds.size;
   const visiblePapers = useMemo(() => {
     if (activeFilter === "all") {
       return papers;
@@ -861,15 +1026,17 @@ export function PaperDashboard({
 
   useEffect(() => {
     function handlePopState() {
-      setActiveFilter(parseTagFilter(new URLSearchParams(window.location.search).get("tag")));
+      const nextFilter = parseTagFilter(new URLSearchParams(window.location.search).get("tag"));
+      setActiveFilter(nextFilter);
+      void loadPaperPage(nextFilter, { append: false, offset: 0 });
     }
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
+  }, [loadPaperPage]);
 
   useEffect(() => {
-    if (!paperListSignature) {
+    if (summary.totalPapers === 0) {
       setRunningChatPaperIds(new Set());
       setKilledChatPaperIds(new Set());
       return;
@@ -898,8 +1065,12 @@ export function PaperDashboard({
           (paperId): paperId is string => typeof paperId === "string",
         );
         if (!cancelled) {
-          setRunningChatPaperIds(new Set(nextRunningIds));
-          setKilledChatPaperIds(new Set(nextKilledIds));
+          setRunningChatPaperIds((current) =>
+            sameStringSet(current, nextRunningIds) ? current : new Set(nextRunningIds),
+          );
+          setKilledChatPaperIds((current) =>
+            sameStringSet(current, nextKilledIds) ? current : new Set(nextKilledIds),
+          );
         }
       } catch (error) {
         console.error("refresh chat status failed", error);
@@ -913,7 +1084,49 @@ export function PaperDashboard({
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [paperListSignature]);
+  }, [summary.totalPapers]);
+
+  useEffect(() => {
+    if (activeFilter === "favorites") {
+      void loadPaperPage(activeFilter, { append: false, offset: 0 });
+      return;
+    }
+
+    if (activeFilter !== "running_chat" && activeFilter !== "killed_chat") {
+      return;
+    }
+
+    void loadPaperPage(activeFilter, { append: false, offset: 0 });
+  }, [activeFilter, favorites, killedChatPaperIds, loadPaperPage, runningChatPaperIds]);
+
+  useEffect(() => {
+    const sentinel = loadSentinelRef.current;
+    if (!sentinel || !hasMorePapers || loadingMore || loadError) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          void loadPaperPage(activeFilter, {
+            append: true,
+            offset: nextPageOffset,
+          });
+        }
+      },
+      { rootMargin: "900px 0px" },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [
+    activeFilter,
+    hasMorePapers,
+    loadError,
+    loadPaperPage,
+    loadingMore,
+    nextPageOffset,
+  ]);
 
   useEffect(() => {
     if (!focusedPaperId) {
@@ -955,7 +1168,17 @@ export function PaperDashboard({
     }
     // 先清空再设置，确保即便是同一个 id 也能重新触发滚动 + 高亮
     setFocusedPaperId(null);
-    setTimeout(() => setFocusedPaperId(id), 0);
+    if (papers.some((paper) => paper.id === id)) {
+      setTimeout(() => setFocusedPaperId(id), 0);
+      return;
+    }
+
+    void loadPaperById(id).then((paper) => {
+      if (paper) {
+        setPapers((current) => mergePaperLists([paper], current));
+      }
+      setTimeout(() => setFocusedPaperId(id), 0);
+    });
   }
 
   function selectFilter(filter: TagFilter) {
@@ -966,6 +1189,12 @@ export function PaperDashboard({
 
     setActiveFilter(filter);
     setMobileFiltersOpen(false);
+    setPapers([]);
+    setListTotal(0);
+    setHasMorePapers(false);
+    setNextPageOffset(0);
+    setLoadError(null);
+    void loadPaperPage(filter, { append: false, offset: 0 });
     window.history.pushState({ tag: filter }, "", currentUrlForFilter(filter));
   }
 
@@ -1007,10 +1236,10 @@ export function PaperDashboard({
           </div>
 
           <div className="mt-3 hidden flex-wrap gap-2 md:flex">
-            <MetricPill label="保存" value={papers.length} />
-            <MetricPill label="处理" value={state.processedArticleIds.length} />
+            <MetricPill label="保存" value={summary.totalPapers} />
+            <MetricPill label="处理" value={summary.processedCount} />
             <MetricPill label="上次新增" value={lastCompletedRun ? lastCompletedRun.analyzedCount : 0} />
-            <MetricPill label="更新" value={formatDate(state.updatedAt, timeZone)} />
+            <MetricPill label="更新" value={formatDate(summary.updatedAt, timeZone)} />
           </div>
 
           <nav
@@ -1020,7 +1249,7 @@ export function PaperDashboard({
           >
             <FilterLink
               active={activeFilter === "all"}
-              count={papers.length}
+              count={summary.totalPapers}
               filter="all"
               icon={<Tag className="h-4 w-4" aria-hidden="true" />}
               label="全部"
@@ -1116,7 +1345,7 @@ export function PaperDashboard({
         <div className="mb-3 hidden items-center justify-between gap-3 md:flex">
           <h2 className="text-lg font-semibold tracking-normal">{listTitle}</h2>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            {visiblePapers.length} / {papers.length}
+            {visiblePapers.length} / {listTotal}
           </p>
         </div>
 
@@ -1147,6 +1376,10 @@ export function PaperDashboard({
                 onRemoveCancel={handleRemoveCancel}
               />
             ))
+          ) : loadingMore ? (
+            <div className="rounded-lg border border-dashed border-zinc-300 bg-white p-10 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400">
+              加载中…
+            </div>
           ) : (
             <div className="rounded-lg border border-dashed border-zinc-300 bg-white p-10 text-center dark:border-zinc-800 dark:bg-zinc-950">
               <History className="mx-auto h-8 w-8 text-zinc-400" aria-hidden="true" />
@@ -1155,7 +1388,44 @@ export function PaperDashboard({
           )}
         </section>
 
-        <RecentRuns runs={state.runs} timeZone={timeZone} />
+        <div ref={loadSentinelRef} className="h-1" aria-hidden="true" />
+        {loadError ? (
+          <div className="mt-3 flex justify-center">
+            <button
+              type="button"
+              onClick={() =>
+                loadPaperPage(activeFilter, {
+                  append: true,
+                  offset: nextPageOffset,
+                })
+              }
+              className="inline-flex h-9 items-center rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
+            >
+              重试加载
+            </button>
+          </div>
+        ) : loadingMore && visiblePapers.length > 0 ? (
+          <div className="mt-3 text-center text-sm text-zinc-500 dark:text-zinc-400">
+            加载中…
+          </div>
+        ) : hasMorePapers ? (
+          <div className="mt-3 flex justify-center">
+            <button
+              type="button"
+              onClick={() =>
+                loadPaperPage(activeFilter, {
+                  append: true,
+                  offset: nextPageOffset,
+                })
+              }
+              className="inline-flex h-9 items-center rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
+            >
+              加载更多
+            </button>
+          </div>
+        ) : null}
+
+        <RecentRuns runs={summary.runs} timeZone={timeZone} />
       </div>
     </main>
   );
