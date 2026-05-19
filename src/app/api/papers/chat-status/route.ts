@@ -5,8 +5,9 @@ import { getConductorClient } from "@/lib/conductor/client";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type RunningChatResponse = {
+type ChatStatusResponse = {
   runningPaperIds: string[];
+  killedPaperIds: string[];
 };
 
 function conductorReadConfigured() {
@@ -23,7 +24,10 @@ export async function GET() {
   );
 
   if (paperTasks.length === 0 || !conductorReadConfigured()) {
-    return NextResponse.json({ runningPaperIds: [] } satisfies RunningChatResponse);
+    return NextResponse.json({
+      runningPaperIds: [],
+      killedPaperIds: [],
+    } satisfies ChatStatusResponse);
   }
 
   try {
@@ -36,21 +40,37 @@ export async function GET() {
       projectIds.add(binding.projectId);
     }
 
-    const runningTasks = (
-      await Promise.all(
+    const [runningTasks, killedTasks] = await Promise.all([
+      Promise.all(
         Array.from(projectIds).map((projectId) =>
           client.tasks.list({ projectId, status: "running" }),
         ),
-      )
-    ).flat();
+      ),
+      Promise.all(
+        Array.from(projectIds).map((projectId) =>
+          client.tasks.list({ projectId, status: "killed" }),
+        ),
+      ),
+    ]);
 
     const runningPaperIds = runningTasks
+      .flat()
+      .map((task) => taskToPaperId.get(task.id))
+      .filter((paperId): paperId is string => Boolean(paperId));
+    const killedPaperIds = killedTasks
+      .flat()
       .map((task) => taskToPaperId.get(task.id))
       .filter((paperId): paperId is string => Boolean(paperId));
 
-    return NextResponse.json({ runningPaperIds } satisfies RunningChatResponse);
+    return NextResponse.json({
+      runningPaperIds,
+      killedPaperIds,
+    } satisfies ChatStatusResponse);
   } catch (error) {
-    console.warn("[paper-chat-status] failed to read running tasks", error);
-    return NextResponse.json({ runningPaperIds: [] } satisfies RunningChatResponse);
+    console.warn("[paper-chat-status] failed to read chat task status", error);
+    return NextResponse.json({
+      runningPaperIds: [],
+      killedPaperIds: [],
+    } satisfies ChatStatusResponse);
   }
 }

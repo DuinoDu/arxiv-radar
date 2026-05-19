@@ -1,6 +1,11 @@
 import type { PaperTag } from "./types";
 
-export type TagFilter = PaperTag | "all" | "favorites" | "running_chat";
+export type TagFilter =
+  | PaperTag
+  | "all"
+  | "favorites"
+  | "running_chat"
+  | "killed_chat";
 
 export const tagLabels: Record<PaperTag, string> = {
   egocentric: "egocentric",
@@ -22,7 +27,8 @@ export function parseTagFilter(tag?: string | string[] | null): TagFilter {
     value === "vr" ||
     value === "teleop" ||
     value === "favorites" ||
-    value === "running_chat"
+    value === "running_chat" ||
+    value === "killed_chat"
   ) {
     return value;
   }
