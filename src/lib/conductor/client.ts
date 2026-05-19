@@ -16,6 +16,7 @@
  *   - keep the env-var path as the fallback for the unauthenticated /
  *     local-dev case.
  */
+import { promises as fs } from "node:fs";
 import { connect, type AppClient } from "@love-moon/app-sdk/server";
 
 let cachedClient: AppClient | null = null;
@@ -63,12 +64,36 @@ export async function getConductorClient(): Promise<AppClient> {
 /**
  * Idempotent project binding for this app. Matches Conductor's existing
  * project by (daemonHost, workspacePath); creates one on miss.
+ *
+ * Best-effort `mkdir -p` of the workspace path first: when the daemon
+ * lives on the same host as the BFF (the common dev setup —
+ * CONDUCTOR_DAEMON_HOST=m1 + this Node process running on m1), the SDK's
+ * daemon-side validation requires the path to already exist, otherwise it
+ * 4xx's with "Workspace path does not exist on daemon ...". Creating it
+ * here removes the manual `mkdir` step. For remote-daemon deployments the
+ * local mkdir is harmless (creates a useless dir on the BFF host) — the
+ * remote daemon will still 4xx and the operator can provision the path.
  */
 export async function bindArxivRadarProject() {
+  const workspacePath = readEnv("CONDUCTOR_WORKSPACE_PATH");
+
+  try {
+    await fs.mkdir(workspacePath, { recursive: true });
+  } catch (err) {
+    // Swallow + warn: if this fails for real (EACCES, path-is-a-file),
+    // the subsequent `projects.bind` call will surface a clearer error
+    // from the daemon's own validation. We never want this mkdir to mask
+    // the actual binding failure.
+    console.warn(
+      "[conductor] failed to ensure workspace path exists",
+      { workspacePath, err },
+    );
+  }
+
   const client = await getConductorClient();
   return client.projects.bind({
     name: process.env.CONDUCTOR_APP_NAME ?? "arxiv-radar",
     daemonHost: readEnv("CONDUCTOR_DAEMON_HOST"),
-    workspacePath: readEnv("CONDUCTOR_WORKSPACE_PATH"),
+    workspacePath,
   });
 }
