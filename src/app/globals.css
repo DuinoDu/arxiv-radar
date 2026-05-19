@@ -65,7 +65,7 @@ summary::-webkit-details-marker {
   --conductor-paper: #ffffff;
   --conductor-text: #09090b;
   --conductor-text-muted: rgb(82 82 91);
-  --conductor-bubble-user: #09090b;
+  --conductor-bubble-user: #e4e4e7;
   --conductor-bubble-assistant: #f4f4f5;
   --conductor-border: #e4e4e7;
   --conductor-radius: 8px;
@@ -79,7 +79,7 @@ summary::-webkit-details-marker {
   --conductor-paper: #09090b;
   --conductor-text: #fafafa;
   --conductor-text-muted: rgb(161 161 170);
-  --conductor-bubble-user: #fafafa;
+  --conductor-bubble-user: #27272a;
   --conductor-bubble-assistant: #18181b;
   --conductor-border: #27272a;
   --accent: #fafafa;
@@ -89,6 +89,7 @@ summary::-webkit-details-marker {
 .conductor-chat-view .conductor-message-list {
   flex: 1 1 0;
   min-height: 0;
+  padding-inline: 12px;
 }
 
 /* --- Status bar: move from top divider to a thin band above the input --- */
@@ -99,40 +100,47 @@ summary::-webkit-details-marker {
   padding: 6px 12px;
 }
 
-/* --- Bubble alignment: match both the SDK's class (`--user`/`--assistant`)
- *     AND the `data-role` attribute it stamps. Belt-and-suspenders: if the
- *     SDK ever changes its `isUser` logic, the attribute-keyed rule still
- *     pins user/sdk to the right, assistant/system to the left. --- */
+/* --- Bubble layout: use full-width message blocks, leaving only the message
+ *     list's balanced side padding. Role is distinguished by shade below. --- */
 .conductor-chat-view .conductor-message {
   display: flex;
+  width: 100%;
 }
 
 .conductor-chat-view .conductor-message--user,
 .conductor-chat-view .conductor-message[data-role="user"],
-.conductor-chat-view .conductor-message[data-role="sdk"] {
-  justify-content: flex-end;
-}
-
 .conductor-chat-view .conductor-message--assistant,
 .conductor-chat-view .conductor-message[data-role="assistant"],
+.conductor-chat-view .conductor-message[data-role="sdk"],
 .conductor-chat-view .conductor-message[data-role="system"] {
   justify-content: flex-start;
+}
+
+.conductor-chat-view .conductor-bubble {
+  width: 100%;
+  max-width: none;
+  border-radius: var(--conductor-radius);
+}
+
+.conductor-chat-view[data-layout="mobile"] .conductor-bubble,
+.conductor-chat-view[data-layout="desktop"] .conductor-bubble {
+  max-width: none;
 }
 
 /* --- Bubble colors (light) --- */
 .conductor-chat-view .conductor-message--user .conductor-bubble,
 .conductor-chat-view .conductor-message[data-role="user"] .conductor-bubble,
 .conductor-chat-view .conductor-message[data-role="sdk"] .conductor-bubble {
-  background: #09090b;
-  color: #fafafa;
-  border-color: transparent;
+  background: var(--conductor-bubble-user);
+  color: var(--conductor-text);
+  border-color: #d4d4d8;
 }
 
 .conductor-chat-view .conductor-message--assistant .conductor-bubble,
 .conductor-chat-view .conductor-message[data-role="assistant"] .conductor-bubble,
 .conductor-chat-view .conductor-message[data-role="system"] .conductor-bubble {
-  background: #f4f4f5;
-  color: #09090b;
+  background: var(--conductor-bubble-assistant);
+  color: var(--conductor-text);
   border-color: #e4e4e7;
 }
 
@@ -140,16 +148,16 @@ summary::-webkit-details-marker {
 .dark .conductor-chat-view .conductor-message--user .conductor-bubble,
 .dark .conductor-chat-view .conductor-message[data-role="user"] .conductor-bubble,
 .dark .conductor-chat-view .conductor-message[data-role="sdk"] .conductor-bubble {
-  background: #fafafa;
-  color: #09090b;
-  border-color: transparent;
+  background: var(--conductor-bubble-user);
+  color: var(--conductor-text);
+  border-color: #3f3f46;
 }
 
 .dark .conductor-chat-view .conductor-message--assistant .conductor-bubble,
 .dark .conductor-chat-view .conductor-message[data-role="assistant"] .conductor-bubble,
 .dark .conductor-chat-view .conductor-message[data-role="system"] .conductor-bubble {
-  background: #18181b;
-  color: #fafafa;
+  background: var(--conductor-bubble-assistant);
+  color: var(--conductor-text);
   border-color: #27272a;
 }
 
