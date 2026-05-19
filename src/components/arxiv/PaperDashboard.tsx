@@ -14,6 +14,7 @@ import {
   MessageCircle,
   Plus,
   Tag,
+  Radio,
   Workflow,
   X,
 } from "lucide-react";
@@ -54,6 +55,8 @@ const tagStyles: Record<PaperTag, string> = {
     "border-lime-200 bg-lime-50 text-lime-800 dark:border-lime-900 dark:bg-lime-950/50 dark:text-lime-200",
   vr:
     "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-800 dark:border-fuchsia-900 dark:bg-fuchsia-950/50 dark:text-fuchsia-200",
+  teleop:
+    "border-orange-200 bg-orange-50 text-orange-800 dark:border-orange-900 dark:bg-orange-950/50 dark:text-orange-200",
 };
 
 const statusLabels: Record<RunStatus, string> = {
@@ -838,6 +841,14 @@ export function PaperDashboard({
               filter="vr"
               icon={<Glasses className="h-4 w-4" aria-hidden="true" />}
               label="VR"
+              onSelect={selectFilter}
+            />
+            <FilterLink
+              active={activeFilter === "teleop"}
+              count={countsByTag.teleop}
+              filter="teleop"
+              icon={<Radio className="h-4 w-4" aria-hidden="true" />}
+              label="teleop"
               onSelect={selectFilter}
             />
             <FilterLink

@@ -8,6 +8,7 @@ export const tagLabels: Record<PaperTag, string> = {
   world_model: "WM",
   so101: "SO101",
   vr: "VR",
+  teleop: "teleop",
 };
 
 export function parseTagFilter(tag?: string | string[] | null): TagFilter {
@@ -19,6 +20,7 @@ export function parseTagFilter(tag?: string | string[] | null): TagFilter {
     value === "world_model" ||
     value === "so101" ||
     value === "vr" ||
+    value === "teleop" ||
     value === "favorites"
   ) {
     return value;

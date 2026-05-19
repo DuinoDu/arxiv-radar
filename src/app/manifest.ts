@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "arxiv-radar",
     short_name: "arxiv-radar",
     description:
-      "Daily arXiv robotics paper summaries with egocentric, VLA, WM, SO101, and VR tags",
+      "Daily arXiv robotics paper summaries with egocentric, VLA, WM, SO101, VR, and teleop tags",
     start_url: "/",
     scope: "/",
     display: "standalone",

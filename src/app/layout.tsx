@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 
 const APP_NAME = "arxiv-radar";
 const APP_DESCRIPTION =
-  "Daily arXiv robotics paper summaries with egocentric, VLA, WM, SO101, and VR tags";
+  "Daily arXiv robotics paper summaries with egocentric, VLA, WM, SO101, VR, and teleop tags";
 
 export const metadata: Metadata = {
   applicationName: APP_NAME,

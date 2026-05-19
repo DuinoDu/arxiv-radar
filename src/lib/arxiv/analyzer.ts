@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { compactText, fetchPaperFullText, type PaperFullText } from "./fulltext";
+import { compactText, extractGithubUrl, fetchPaperFullText, type PaperFullText } from "./fulltext";
 import type { AnalyzedPaper, ArxivArticle, PaperTag, PaperTagSource } from "./types";
 
 const DEFAULT_MODEL = "gpt-4o-mini";
@@ -23,8 +23,9 @@ const ModelAnalysisSchema = z.object({
       worldModel: z.boolean().default(false),
       so101: z.boolean().default(false),
       vr: z.boolean().default(false),
+      teleop: z.boolean().default(false),
     })
-    .default({ egocentric: false, vla: false, worldModel: false, so101: false, vr: false }),
+    .default({ egocentric: false, vla: false, worldModel: false, so101: false, vr: false, teleop: false }),
   tagEvidence: z
     .object({
       egocentric: z.string().optional(),
@@ -32,6 +33,7 @@ const ModelAnalysisSchema = z.object({
       worldModel: z.string().optional(),
       so101: z.string().optional(),
       vr: z.string().optional(),
+      teleop: z.string().optional(),
     })
     .default({}),
   tagSource: z
@@ -41,6 +43,7 @@ const ModelAnalysisSchema = z.object({
       worldModel: TagSourceFieldSchema,
       so101: TagSourceFieldSchema,
       vr: TagSourceFieldSchema,
+      teleop: TagSourceFieldSchema,
     })
     .default({}),
   tagConfidence: z
@@ -50,6 +53,7 @@ const ModelAnalysisSchema = z.object({
       worldModel: z.coerce.number().min(0).max(1).optional(),
       so101: z.coerce.number().min(0).max(1).optional(),
       vr: z.coerce.number().min(0).max(1).optional(),
+      teleop: z.coerce.number().min(0).max(1).optional(),
     })
     .default({}),
   confidence: z.coerce.number().min(0).max(1).optional(),
@@ -120,6 +124,7 @@ function toTags(analysis: ModelAnalysis, fullText: PaperFullText) {
   addTag("world_model", "worldModel", "LLM judged world-model usage from the supplied paper text.");
   addTag("so101", "so101", "LLM judged SO-100/SO-101 robot-arm usage from the supplied paper text.");
   addTag("vr", "vr", "LLM judged VR-headset usage from the supplied paper text.");
+  addTag("teleop", "teleop", "LLM judged teleoperation usage from the supplied paper text.");
 
   return {
     tags: Array.from(tags),
@@ -127,41 +132,6 @@ function toTags(analysis: ModelAnalysis, fullText: PaperFullText) {
     tagConfidence,
     tagSource,
   };
-}
-
-const GITHUB_URL_REGEX = /https?:\/\/(?:www\.)?github\.com\/[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9._\-#/]*)?/gi;
-
-export function extractGithubUrl(...sources: Array<string | undefined>) {
-  for (const source of sources) {
-    if (!source) {
-      continue;
-    }
-
-    const matches = source.match(GITHUB_URL_REGEX);
-    if (!matches || matches.length === 0) {
-      continue;
-    }
-
-    for (const raw of matches) {
-      // Strip trailing punctuation that often gets glued onto URLs in prose.
-      const cleaned = raw.replace(/[).,;:'"”’\]>]+$/g, "");
-      const lower = cleaned.toLowerCase();
-
-      // Skip non-repo paths we don't want to deep-link to.
-      if (
-        /github\.com\/?$/.test(lower) ||
-        /github\.com\/(?:about|features|pricing|enterprise|customer-stories|security|team|topics|trending|marketplace|explore|notifications|settings|search|sponsors|orgs|login|join|new|readme|codespaces|issues|pulls|blog)(?:\/|$)/.test(
-          lower,
-        )
-      ) {
-        continue;
-      }
-
-      return cleaned;
-    }
-  }
-
-  return undefined;
 }
 
 function extractJson(text: string) {
@@ -203,6 +173,7 @@ async function requestAnalysis(article: ArxivArticle, fullText: PaperFullText, u
             "worldModel 只在论文明确学习、构建或使用世界模型用于预测状态转移、未来观测、动力学、规划、控制或机器人学习时为 true；普通地图、SLAM、场景表示或环境模型若不承担预测/转移模型作用则不算。",
             "so101 只在论文明确使用 SO-100、SO100、SO-101、SO101 或 SO101-arm 机械臂进行实验、数据采集、评测、演示或机器人操作时为 true；只在相关工作、背景或未使用的可选平台中提到不算。",
             "vr 只在论文明确使用 VR 头显/HMD/虚拟现实头戴设备来做实验、数据采集、用户研究、遥操作、演示或评测时为 true；包括 Meta/Oculus Quest、HTC Vive、Valve Index、Varjo 等 VR/MR 头显。只做仿真、3D 可视化、VR 作为相关工作背景或没有头显实验的不算。",
+            "teleop 只在论文明确涉及遥操作/teleoperation/remote operation/remote control，由人类远程控制机器人、机械臂、移动平台或机器人化身来完成任务、采集数据、示教、评测或实验时为 true；普通自动控制、远程监控、离线仿真、没有人类实时/远程控制机器人动作的不算。",
             "如果正文可用，tagEvidence 应优先引用正文里的具体证据；没有足够证据就把对应 tag 设为 false。",
           ].join("\n"),
       },
@@ -236,6 +207,7 @@ async function requestAnalysis(article: ArxivArticle, fullText: PaperFullText, u
               worldModel: "boolean",
               so101: "boolean",
               vr: "boolean",
+              teleop: "boolean",
             },
             tagEvidence: {
               egocentric: "evidence string when true",
@@ -243,6 +215,7 @@ async function requestAnalysis(article: ArxivArticle, fullText: PaperFullText, u
               worldModel: "evidence string when true",
               so101: "evidence string when true",
               vr: "evidence string when true",
+              teleop: "evidence string when true",
             },
             tagSource: {
               egocentric: "title | abstract | full_text when true",
@@ -250,6 +223,7 @@ async function requestAnalysis(article: ArxivArticle, fullText: PaperFullText, u
               worldModel: "title | abstract | full_text when true",
               so101: "title | abstract | full_text when true",
               vr: "title | abstract | full_text when true",
+              teleop: "title | abstract | full_text when true",
             },
             tagConfidence: {
               egocentric: "0 to 1 when true",
@@ -257,6 +231,7 @@ async function requestAnalysis(article: ArxivArticle, fullText: PaperFullText, u
               worldModel: "0 to 1 when true",
               so101: "0 to 1 when true",
               vr: "0 to 1 when true",
+              teleop: "0 to 1 when true",
             },
             confidence: "0 to 1",
           },
@@ -312,7 +287,7 @@ export async function analyzeArticle(
   const fullText = await fetchPaperFullText(article);
   const analysis = await analyzeArticleWithModel(article, fullText);
   const { tags, tagEvidence, tagConfidence, tagSource } = toTags(analysis, fullText);
-  const githubUrl = extractGithubUrl(article.abstract, fullText.text);
+  const githubUrl = fullText.githubUrl || extractGithubUrl(article.abstract, fullText.text);
 
   return {
     ...article,
