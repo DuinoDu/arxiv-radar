@@ -141,7 +141,23 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         body?.strategy === "fresh" || body?.strategy === "inplace"
           ? body.strategy
           : "inplace";
-      const result = await restartConductorTask(taskId, { strategy });
+      // Respect a per-restart override from the body, falling back to the
+      // env-configured default. Without this fallback, restarting a task
+      // would silently revert to whatever backend the task was originally
+      // created with — confusing if the user has since changed the env to
+      // a different model / variant.
+      const explicitBackend =
+        typeof body?.backend_type === "string" && body.backend_type.trim()
+          ? body.backend_type.trim()
+          : typeof body?.backendType === "string" && body.backendType.trim()
+            ? body.backendType.trim()
+            : null;
+      const envBackend = process.env.CONDUCTOR_BACKEND_TYPE?.trim() || null;
+      const backendType = explicitBackend ?? envBackend ?? undefined;
+      const result = await restartConductorTask(taskId, {
+        strategy,
+        ...(backendType ? { backendType } : {}),
+      });
       return NextResponse.json(result);
     }
 

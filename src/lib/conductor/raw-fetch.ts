@@ -75,14 +75,22 @@ export async function killConductorTask(taskId: string): Promise<unknown> {
 
 /**
  * Restart a Conductor task. Maps to `POST /api/tasks/:id/restart` with
- * `{strategy: 'inplace'}`. Conductor responds with the updated task object
- * (status typically transitions back to 'init' / 'running').
+ * `{strategy, backend_type?}`. Conductor responds with the updated task
+ * object (status typically transitions back to 'init' / 'running').
+ *
+ * `backendType` lets a restart switch the task onto a different daemon
+ * CLI (mapped via `allow_cli_list`). When omitted, the daemon reuses
+ * whatever backend the task was created with.
  */
 export async function restartConductorTask(
   taskId: string,
-  options: { strategy?: "inplace" | "fresh" } = {},
+  options: { strategy?: "inplace" | "fresh"; backendType?: string } = {},
 ): Promise<unknown> {
   const url = `${getBaseUrl()}/api/tasks/${encodeURIComponent(taskId)}/restart`;
+  const body: Record<string, unknown> = {
+    strategy: options.strategy ?? "inplace",
+  };
+  if (options.backendType) body.backend_type = options.backendType;
   const response = await fetch(url, {
     method: "POST",
     headers: {
@@ -90,13 +98,17 @@ export async function restartConductorTask(
       "Content-Type": "application/json",
       Authorization: getAuthHeader(),
     },
-    body: JSON.stringify({ strategy: options.strategy ?? "inplace" }),
+    body: JSON.stringify(body),
   });
-  const body = await response.json().catch(() => ({}));
+  const responseBody = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw makeError(response.status, body, `restart failed (${response.status})`);
+    throw makeError(
+      response.status,
+      responseBody,
+      `restart failed (${response.status})`,
+    );
   }
-  return body;
+  return responseBody;
 }
 
 /** Type-guard for callers. */

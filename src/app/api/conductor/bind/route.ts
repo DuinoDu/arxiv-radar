@@ -131,10 +131,17 @@ async function bindWithDedup(
   const promise = (async (): Promise<BindResult> => {
     const project = await bindArxivRadarProject();
     const client = await getConductorClient();
+    // Backend selection: env-configured `CONDUCTOR_BACKEND_TYPE` maps to a
+    // key in the daemon's `allow_cli_list`. Empty / missing → let Conductor
+    // pick the daemon default. Trimmed so accidental whitespace in .env
+    // doesn't produce a bogus backend name like "  codex-fast " that the
+    // daemon will reject.
+    const backendType = process.env.CONDUCTOR_BACKEND_TYPE?.trim() || undefined;
     const task = await client.tasks.create({
       projectId: project.id,
       title: paper.title.slice(0, 200),
       initialMessage: buildInitialMessage(paper),
+      ...(backendType ? { backendType } : {}),
     });
 
     await setPaperTaskBinding(paperId, {
