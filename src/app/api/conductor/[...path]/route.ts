@@ -19,6 +19,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ConductorAppError, isConductorAppError } from "@love-moon/app-sdk";
 import { getConductorClient } from "@/lib/conductor/client";
+import {
+  isConductorRawError,
+  killConductorTask,
+  restartConductorTask,
+} from "@/lib/conductor/raw-fetch";
 import { clearPaperTaskBindingByTaskId } from "@/lib/arxiv/store";
 
 export const runtime = "nodejs";
@@ -37,6 +42,13 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
 
   try {
     const client = await getConductorClient();
+    // GET /tasks/:id → task object (used by our task status badge).
+    // The catch-all already handles /tasks/:id/messages and /tasks/:id/events
+    // below; this branch covers the "no third segment" case.
+    if (op === undefined) {
+      const task = await client.tasks.get(taskId);
+      return NextResponse.json(task);
+    }
     if (op === "messages") {
       const url = new URL(req.url);
       const beforeId = url.searchParams.get("before_id") ?? undefined;
@@ -115,6 +127,22 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       }
       await client.tasks.interrupt(taskId, { targetReplyTo });
       return NextResponse.json({ ok: true });
+    }
+
+    // Task lifecycle ops — bypass the SDK (which doesn't wrap these) and
+    // call Conductor REST directly. Used by the chat top bar's task-card-
+    // style controls (running → kill?, killed → restart?).
+    if (op === "kill") {
+      const task = await killConductorTask(taskId);
+      return NextResponse.json(task);
+    }
+    if (op === "restart") {
+      const strategy =
+        body?.strategy === "fresh" || body?.strategy === "inplace"
+          ? body.strategy
+          : "inplace";
+      const result = await restartConductorTask(taskId, { strategy });
+      return NextResponse.json(result);
     }
 
     return notFound();
@@ -287,6 +315,23 @@ async function errorResponse(err: unknown, taskId?: string) {
     return NextResponse.json(
       { error: err.message, code: err.code },
       { status: err.status ?? 500 },
+    );
+  }
+  // Raw Conductor REST errors (from kill/restart bypass paths).
+  if (isConductorRawError(err)) {
+    if (taskId && err.status === 404) {
+      try {
+        await clearPaperTaskBindingByTaskId(taskId);
+      } catch (cleanupErr) {
+        console.error(
+          "[conductor] failed to clear stale paper-task binding (raw)",
+          { taskId, cleanupErr },
+        );
+      }
+    }
+    return NextResponse.json(
+      { error: err.message, code: err.code },
+      { status: err.status },
     );
   }
   return NextResponse.json(
