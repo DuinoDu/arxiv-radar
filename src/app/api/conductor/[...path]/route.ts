@@ -44,7 +44,7 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
       const limit = limitParam ? Number.parseInt(limitParam, 10) : undefined;
       const page = await client.tasks.history(taskId, { beforeId, limit });
       return NextResponse.json({
-        messages: page.messages,
+        messages: page.messages.map(normalizeMessageForWidget),
         pagination: {
           has_more_before: page.hasMoreBefore,
           oldest_message_id: page.oldestMessageId,
@@ -184,8 +184,9 @@ async function startEventStream(
           signal: abortController.signal,
         })) {
           if (closed || req.signal.aborted) break;
+          const normalizedEvent = normalizeEventForWidget(event);
           const ok = safeEnqueue(
-            encoder.encode(`data: ${JSON.stringify(event)}\n\n`),
+            encoder.encode(`data: ${JSON.stringify(normalizedEvent)}\n\n`),
           );
           if (!ok) break;
         }
@@ -251,6 +252,54 @@ async function startEventStream(
       "X-Accel-Buffering": "no",
     },
   });
+}
+
+type ChatMessageForWidget = {
+  role?: string;
+  metadata?: Record<string, unknown> | null;
+};
+
+function normalizeEventForWidget<T>(event: T): T {
+  if (!isRecord(event) || event.type !== "message_appended") return event;
+  const message = event.message;
+  if (!isRecord(message)) return event;
+
+  const normalizedMessage = normalizeMessageForWidget(message);
+  if (normalizedMessage === message) return event;
+  return { ...event, message: normalizedMessage } as T;
+}
+
+function normalizeMessageForWidget<T extends ChatMessageForWidget>(message: T): T {
+  // Conductor can emit AI replies as `task_sdk_message`; the SDK then
+  // normalizes missing/ambiguous roles to `sdk`, and its React view renders
+  // `sdk` as a user-side bubble. Only app-origin SDK messages should keep
+  // that treatment. Non-app SDK messages are assistant replies for this app.
+  if (
+    message.role !== "sdk" ||
+    isAppOriginMessage(message.metadata) ||
+    isSyntheticMessage(message.metadata)
+  ) {
+    return message;
+  }
+
+  return { ...message, role: "assistant" };
+}
+
+function isAppOriginMessage(
+  metadata: Record<string, unknown> | null | undefined,
+): boolean {
+  const audit = metadata?.audit;
+  return isRecord(audit) && audit.actor === "app";
+}
+
+function isSyntheticMessage(
+  metadata: Record<string, unknown> | null | undefined,
+): boolean {
+  return metadata?.synthetic === true;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function notFound() {
