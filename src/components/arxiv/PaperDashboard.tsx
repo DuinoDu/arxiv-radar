@@ -75,9 +75,44 @@ const statusStyles: Record<RunStatus, string> = {
 
 const CHAT_STATUS_POLL_MS = 15_000;
 
+type ChatLifecycleStatus = "running" | "killed";
+
 type ChatStatusPayload = {
   runningPaperIds?: unknown;
+  killedPaperIds?: unknown;
 };
+
+function ChatStatusDot({
+  className = "",
+  status,
+}: {
+  className?: string;
+  status: ChatLifecycleStatus;
+}) {
+  const color =
+    status === "running"
+      ? "bg-emerald-500"
+      : "bg-zinc-400 dark:bg-zinc-500";
+
+  return (
+    <span
+      className={`inline-block h-2.5 w-2.5 rounded-full ${color} ${className}`}
+      aria-hidden="true"
+    />
+  );
+}
+
+function chatStatusTitle(status: ChatLifecycleStatus | null) {
+  if (status === "running") return "chat 运行中";
+  if (status === "killed") return "chat 已停止";
+  return "chat";
+}
+
+function chatStatusAriaSuffix(status: ChatLifecycleStatus | null) {
+  if (status === "running") return " 运行中";
+  if (status === "killed") return " 已停止";
+  return "";
+}
 
 function formatDate(value: string | undefined, timeZone: string) {
   if (!value) {
@@ -323,18 +358,22 @@ function EditableTagList({
 
 function FilterLink({
   active,
+  ariaLabel,
   count,
   filter,
   icon,
   label,
   onSelect,
+  title,
 }: {
   active: boolean;
+  ariaLabel?: string;
   count: number;
   filter: TagFilter;
   icon: ReactNode;
   label: string;
   onSelect: (filter: TagFilter) => void;
+  title?: string;
 }) {
   function handleClick(event: MouseEvent<HTMLAnchorElement>) {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.altKey || event.ctrlKey || event.shiftKey) {
@@ -350,6 +389,8 @@ function FilterLink({
       href={filterHref(filter)}
       onClick={handleClick}
       aria-current={active ? "page" : undefined}
+      aria-label={ariaLabel}
+      title={title}
       className={`inline-flex h-10 items-center gap-2 rounded-md border px-3 text-sm font-medium transition ${
         active
           ? "border-zinc-950 bg-zinc-950 text-white dark:border-white dark:bg-white dark:text-zinc-950"
@@ -376,7 +417,7 @@ function paperCardDomId(id: string) {
 function PaperRow({
   paper,
   timeZone,
-  chatRunning,
+  chatStatus,
   isFavorite,
   highlighted,
   isEditingTags,
@@ -391,7 +432,7 @@ function PaperRow({
 }: {
   paper: AnalyzedPaper;
   timeZone: string;
-  chatRunning: boolean;
+  chatStatus: ChatLifecycleStatus | null;
   isFavorite: boolean;
   highlighted: boolean;
   isEditingTags: boolean;
@@ -507,15 +548,15 @@ function PaperRow({
             target="_blank"
             rel="noreferrer"
             onClick={() => onChatStart(paper.id)}
-            title={chatRunning ? "chat 运行中" : "chat"}
-            aria-label={`${paper.title} chat${chatRunning ? " 运行中" : ""}`}
+            title={chatStatusTitle(chatStatus)}
+            aria-label={`${paper.title} chat${chatStatusAriaSuffix(chatStatus)}`}
             className="relative inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-900"
           >
             <MessageCircle className="h-4 w-4" aria-hidden="true" />
-            {chatRunning ? (
-              <span
-                className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-zinc-950"
-                aria-hidden="true"
+            {chatStatus ? (
+              <ChatStatusDot
+                status={chatStatus}
+                className="absolute right-1 top-1 ring-2 ring-white dark:ring-zinc-950"
               />
             ) : null}
           </a>
@@ -670,6 +711,7 @@ export function PaperDashboard({
   const [papers, setPapers] = useState<AnalyzedPaper[]>(state.papers);
   const [papersSource, setPapersSource] = useState<AnalyzedPaper[]>(state.papers);
   const [runningChatPaperIds, setRunningChatPaperIds] = useState<Set<string>>(() => new Set());
+  const [killedChatPaperIds, setKilledChatPaperIds] = useState<Set<string>>(() => new Set());
   const { favorites, isFavorite, toggleFavorite, addFavorite } = useFavorites();
   const paperListSignature = useMemo(
     () => papers.map((paper) => paper.id).sort().join("|"),
@@ -783,6 +825,10 @@ export function PaperDashboard({
     () => papers.reduce((count, paper) => (runningChatPaperIds.has(paper.id) ? count + 1 : count), 0),
     [papers, runningChatPaperIds],
   );
+  const killedChatCount = useMemo(
+    () => papers.reduce((count, paper) => (killedChatPaperIds.has(paper.id) ? count + 1 : count), 0),
+    [killedChatPaperIds, papers],
+  );
   const visiblePapers = useMemo(() => {
     if (activeFilter === "all") {
       return papers;
@@ -796,16 +842,22 @@ export function PaperDashboard({
       return papers.filter((paper) => runningChatPaperIds.has(paper.id));
     }
 
+    if (activeFilter === "killed_chat") {
+      return papers.filter((paper) => killedChatPaperIds.has(paper.id));
+    }
+
     return papers.filter((paper) => paper.tags.includes(activeFilter));
-  }, [activeFilter, favorites, papers, runningChatPaperIds]);
+  }, [activeFilter, favorites, killedChatPaperIds, papers, runningChatPaperIds]);
   const listTitle =
     activeFilter === "all"
       ? "论文列表"
       : activeFilter === "favorites"
         ? "收藏论文"
         : activeFilter === "running_chat"
-          ? "chat 论文"
-          : `${tagLabels[activeFilter]} 论文`;
+          ? "运行中 chat 论文"
+          : activeFilter === "killed_chat"
+            ? "已停止 chat 论文"
+            : `${tagLabels[activeFilter]} 论文`;
 
   useEffect(() => {
     function handlePopState() {
@@ -819,6 +871,7 @@ export function PaperDashboard({
   useEffect(() => {
     if (!paperListSignature) {
       setRunningChatPaperIds(new Set());
+      setKilledChatPaperIds(new Set());
       return;
     }
 
@@ -830,15 +883,23 @@ export function PaperDashboard({
           cache: "no-store",
         });
         const payload = (await response.json().catch(() => ({}))) as ChatStatusPayload;
-        if (!response.ok || !Array.isArray(payload.runningPaperIds)) {
+        if (
+          !response.ok ||
+          !Array.isArray(payload.runningPaperIds) ||
+          !Array.isArray(payload.killedPaperIds)
+        ) {
           throw new Error("Failed to fetch chat status");
         }
 
-        const nextIds = payload.runningPaperIds.filter(
+        const nextRunningIds = payload.runningPaperIds.filter(
+          (paperId): paperId is string => typeof paperId === "string",
+        );
+        const nextKilledIds = payload.killedPaperIds.filter(
           (paperId): paperId is string => typeof paperId === "string",
         );
         if (!cancelled) {
-          setRunningChatPaperIds(new Set(nextIds));
+          setRunningChatPaperIds(new Set(nextRunningIds));
+          setKilledChatPaperIds(new Set(nextKilledIds));
         }
       } catch (error) {
         console.error("refresh chat status failed", error);
@@ -1031,8 +1092,20 @@ export function PaperDashboard({
               active={activeFilter === "running_chat"}
               count={runningChatCount}
               filter="running_chat"
-              icon={<MessageCircle className="h-4 w-4" aria-hidden="true" />}
+              icon={<ChatStatusDot status="running" />}
+              ariaLabel="运行中的 chat"
               label="chat"
+              title="运行中的 chat"
+              onSelect={selectFilter}
+            />
+            <FilterLink
+              active={activeFilter === "killed_chat"}
+              count={killedChatCount}
+              filter="killed_chat"
+              icon={<ChatStatusDot status="killed" />}
+              ariaLabel="已停止的 chat"
+              label="chat"
+              title="已停止的 chat"
               onSelect={selectFilter}
             />
           </nav>
@@ -1054,7 +1127,13 @@ export function PaperDashboard({
                 key={paper.id}
                 paper={paper}
                 timeZone={timeZone}
-                chatRunning={runningChatPaperIds.has(paper.id)}
+                chatStatus={
+                  runningChatPaperIds.has(paper.id)
+                    ? "running"
+                    : killedChatPaperIds.has(paper.id)
+                      ? "killed"
+                      : null
+                }
                 isFavorite={isFavorite(paper.id)}
                 highlighted={focusedPaperId === paper.id}
                 isEditingTags={editingPaperId === paper.id}
