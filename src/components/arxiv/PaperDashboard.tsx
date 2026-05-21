@@ -31,7 +31,6 @@ import {
 } from "@/lib/arxiv/types";
 import {
   PAPER_LIST_PAGE_SIZE,
-  dateValueToPaperDateKey,
   normalizePaperDateKey,
   paperDateKey,
   type PaperCountsByTag,
@@ -170,28 +169,6 @@ function dateKeyToLocalDate(date: string) {
   return new Date(year, month - 1, day);
 }
 
-function localDateKey(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function relativeDateLabel(date: string, index: number, timeZone: string) {
-  if (index === 0) return "最新";
-
-  const target = dateKeyToLocalDate(date);
-  const todayKey = dateValueToPaperDateKey(new Date(), timeZone) ?? localDateKey(new Date());
-  const today = dateKeyToLocalDate(todayKey);
-  const diffDays = Math.round((today.getTime() - target.getTime()) / 86_400_000);
-
-  if (diffDays === 0) return "今天";
-  if (diffDays === 1) return "昨天";
-  if (diffDays === 2) return "前天";
-
-  return `${target.getMonth() + 1}月${target.getDate()}日`;
-}
-
 function shortDateLabel(date: string) {
   const target = dateKeyToLocalDate(date);
   return `${String(target.getMonth() + 1).padStart(2, "0")}/${String(target.getDate()).padStart(2, "0")}`;
@@ -296,12 +273,10 @@ function MetricPill({ label, value }: { label: string; value: ReactNode }) {
 function DateFilterBar({
   dates,
   selectedDate,
-  timeZone,
   onSelect,
 }: {
   dates: PaperListDateBucket[];
   selectedDate: string | null;
-  timeZone: string;
   onSelect: (date: string) => void;
 }) {
   if (dates.length === 0) {
@@ -311,7 +286,7 @@ function DateFilterBar({
   return (
     <div className="-mx-3 mb-3 overflow-x-auto px-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
       <div className="flex min-w-max gap-2 py-1" role="listbox" aria-label="论文日期">
-        {dates.map((bucket, index) => {
+        {dates.map((bucket) => {
           const active = bucket.date === selectedDate;
 
           return (
@@ -321,22 +296,17 @@ function DateFilterBar({
               role="option"
               aria-selected={active}
               onClick={() => onSelect(bucket.date)}
-              className={`inline-flex h-12 min-w-24 items-center justify-between gap-3 rounded-md border px-3 text-left transition ${
+              className={`inline-flex h-8 min-w-[4.75rem] items-center justify-between gap-2 rounded-md border px-2.5 text-sm font-medium transition ${
                 active
                   ? "border-zinc-950 bg-zinc-950 text-white dark:border-white dark:bg-white dark:text-zinc-950"
                   : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
               }`}
             >
-              <span className="flex flex-col leading-tight">
-                <span className="text-sm font-medium">
-                  {relativeDateLabel(bucket.date, index, timeZone)}
-                </span>
-                <span className={`text-xs ${active ? "text-white/70 dark:text-zinc-950/60" : "text-zinc-500 dark:text-zinc-400"}`}>
-                  {shortDateLabel(bucket.date)}
-                </span>
+              <span className="tabular-nums leading-none">
+                {shortDateLabel(bucket.date)}
               </span>
               <span
-                className={`rounded px-1.5 py-0.5 text-xs ${
+                className={`rounded px-1.5 py-0.5 text-xs leading-none ${
                   active
                     ? "bg-white/15 dark:bg-zinc-950/10"
                     : "bg-zinc-100 text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300"
@@ -1565,7 +1535,6 @@ export function PaperDashboard({
           <DateFilterBar
             dates={summary.dateBuckets}
             selectedDate={selectedDate}
-            timeZone={timeZone}
             onSelect={selectPaperDate}
           />
         ) : null}
