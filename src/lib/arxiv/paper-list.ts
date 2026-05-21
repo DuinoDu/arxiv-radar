@@ -6,11 +6,17 @@ export const PAPER_LIST_MAX_PAGE_SIZE = 80;
 
 export type PaperCountsByTag = Record<PaperTag, number>;
 
+export interface PaperListDateBucket {
+  date: string;
+  count: number;
+}
+
 export interface PaperListSummary {
   totalPapers: number;
   processedCount: number;
   favoriteCount: number;
   countsByTag: PaperCountsByTag;
+  dateBuckets: PaperListDateBucket[];
   runs: AnalysisRun[];
   updatedAt: string;
 }
@@ -26,6 +32,7 @@ export interface PaperListPage {
 export interface PaperListInitialData {
   summary: PaperListSummary;
   page: PaperListPage;
+  selectedDate: string | null;
 }
 
 export function getVisiblePapers(state: ArxivState): AnalyzedPaper[] {
@@ -41,6 +48,34 @@ export function countPaperTags(papers: readonly AnalyzedPaper[]): PaperCountsByT
   ) as PaperCountsByTag;
 }
 
+export function paperDateKey(paper: AnalyzedPaper): string | null {
+  const value = paper.publishedAt ?? paper.updatedAt ?? paper.analyzedAt;
+  const date = value.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+}
+
+export function normalizePaperDateKey(value: string | string[] | null | undefined): string | null {
+  const date = Array.isArray(value) ? value[0] : value;
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return null;
+  }
+
+  return date;
+}
+
+export function getPaperDateBuckets(papers: readonly AnalyzedPaper[]): PaperListDateBucket[] {
+  const counts = new Map<string, number>();
+  for (const paper of papers) {
+    const date = paperDateKey(paper);
+    if (!date) continue;
+    counts.set(date, (counts.get(date) ?? 0) + 1);
+  }
+
+  return Array.from(counts.entries())
+    .sort(([left], [right]) => right.localeCompare(left))
+    .map(([date, count]) => ({ date, count }));
+}
+
 export function getPaperListSummary(state: ArxivState): PaperListSummary {
   const visiblePapers = getVisiblePapers(state);
   return {
@@ -48,6 +83,7 @@ export function getPaperListSummary(state: ArxivState): PaperListSummary {
     processedCount: state.processedArticleIds.length,
     favoriteCount: state.favoriteIds.length,
     countsByTag: countPaperTags(visiblePapers),
+    dateBuckets: getPaperDateBuckets(visiblePapers),
     runs: state.runs,
     updatedAt: state.updatedAt,
   };
@@ -73,12 +109,17 @@ export function filterPapers(
   options: {
     favoriteIds?: ReadonlySet<string>;
     paperIds?: ReadonlySet<string>;
+    dateKey?: string | null;
   } = {},
 ): AnalyzedPaper[] {
   let result = papers;
 
   if (options.paperIds) {
     result = result.filter((paper) => options.paperIds?.has(paper.id));
+  }
+
+  if (options.dateKey) {
+    result = result.filter((paper) => paperDateKey(paper) === options.dateKey);
   }
 
   if (filter === "all") {
@@ -104,13 +145,18 @@ export function getPaperListPage(
     offset?: number;
     limit?: number;
     paperIds?: readonly string[];
+    dateKey?: string | null;
   } = {},
 ): PaperListPage {
   const offset = normalizePageOffset(options.offset);
   const limit = normalizePageLimit(options.limit);
   const favoriteIds = new Set(state.favoriteIds);
   const paperIds = options.paperIds?.length ? new Set(options.paperIds) : undefined;
-  const filtered = filterPapers(getVisiblePapers(state), filter, { favoriteIds, paperIds });
+  const filtered = filterPapers(getVisiblePapers(state), filter, {
+    favoriteIds,
+    paperIds,
+    dateKey: options.dateKey,
+  });
   const papers = filtered.slice(offset, offset + limit);
 
   return {
@@ -125,12 +171,24 @@ export function getPaperListPage(
 export function getInitialPaperListData(
   state: ArxivState,
   filter: TagFilter,
+  requestedDate?: string | null,
 ): PaperListInitialData {
+  const summary = getPaperListSummary(state);
+  const normalizedRequestedDate = requestedDate ?? null;
+  const selectedDate =
+    filter === "all"
+      ? summary.dateBuckets.some((bucket) => bucket.date === normalizedRequestedDate)
+        ? normalizedRequestedDate
+        : summary.dateBuckets[0]?.date ?? null
+      : null;
+
   return {
-    summary: getPaperListSummary(state),
+    summary,
     page: getPaperListPage(state, filter, {
       offset: 0,
       limit: PAPER_LIST_PAGE_SIZE,
+      dateKey: selectedDate,
     }),
+    selectedDate,
   };
 }

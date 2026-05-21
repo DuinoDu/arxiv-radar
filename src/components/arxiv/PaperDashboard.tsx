@@ -29,7 +29,10 @@ import {
 } from "@/lib/arxiv/types";
 import {
   PAPER_LIST_PAGE_SIZE,
+  normalizePaperDateKey,
+  paperDateKey,
   type PaperCountsByTag,
+  type PaperListDateBucket,
   type PaperListInitialData,
   type PaperListPage,
   type PaperListSummary,
@@ -139,6 +142,53 @@ function pageEndOffset(page: PaperListPage) {
   return page.offset + page.papers.length;
 }
 
+function adjustDateBuckets(
+  buckets: readonly PaperListDateBucket[],
+  date: string | null,
+  delta: number,
+): PaperListDateBucket[] {
+  if (!date) return buckets.slice();
+
+  const counts = new Map(buckets.map((bucket) => [bucket.date, bucket.count]));
+  counts.set(date, Math.max(0, (counts.get(date) ?? 0) + delta));
+
+  return Array.from(counts.entries())
+    .filter(([, count]) => count > 0)
+    .sort(([left], [right]) => right.localeCompare(left))
+    .map(([bucketDate, count]) => ({ date: bucketDate, count }));
+}
+
+function dateKeyToLocalDate(date: string) {
+  const [year, month, day] = date.split("-").map((part) => Number.parseInt(part, 10));
+  return new Date(year, month - 1, day);
+}
+
+function localDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function relativeDateLabel(date: string, index: number) {
+  if (index === 0) return "最新";
+
+  const target = dateKeyToLocalDate(date);
+  const today = dateKeyToLocalDate(localDateKey(new Date()));
+  const diffDays = Math.round((today.getTime() - target.getTime()) / 86_400_000);
+
+  if (diffDays === 0) return "今天";
+  if (diffDays === 1) return "昨天";
+  if (diffDays === 2) return "前天";
+
+  return `${target.getMonth() + 1}月${target.getDate()}日`;
+}
+
+function shortDateLabel(date: string) {
+  const target = dateKeyToLocalDate(date);
+  return `${String(target.getMonth() + 1).padStart(2, "0")}/${String(target.getDate()).padStart(2, "0")}`;
+}
+
 function ChatStatusDot({
   className = "",
   status,
@@ -207,13 +257,19 @@ function filterHref(filter: TagFilter) {
   return filter === "all" ? "/" : `/?tag=${filter}`;
 }
 
-function currentUrlForFilter(filter: TagFilter) {
+function currentUrlForFilter(filter: TagFilter, date?: string | null) {
   const params = new URLSearchParams(window.location.search);
 
   if (filter === "all") {
     params.delete("tag");
+    if (date) {
+      params.set("date", date);
+    } else {
+      params.delete("date");
+    }
   } else {
     params.set("tag", filter);
+    params.delete("date");
   }
 
   const query = params.toString();
@@ -226,6 +282,61 @@ function MetricPill({ label, value }: { label: string; value: ReactNode }) {
       <span className="text-zinc-500 dark:text-zinc-400">{label}</span>
       <span className="font-medium text-zinc-950 dark:text-white">{value}</span>
     </span>
+  );
+}
+
+function DateFilterBar({
+  dates,
+  selectedDate,
+  onSelect,
+}: {
+  dates: PaperListDateBucket[];
+  selectedDate: string | null;
+  onSelect: (date: string) => void;
+}) {
+  if (dates.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="-mx-3 mb-3 overflow-x-auto px-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+      <div className="flex min-w-max gap-2 py-1" role="listbox" aria-label="论文日期">
+        {dates.map((bucket, index) => {
+          const active = bucket.date === selectedDate;
+
+          return (
+            <button
+              key={bucket.date}
+              type="button"
+              role="option"
+              aria-selected={active}
+              onClick={() => onSelect(bucket.date)}
+              className={`inline-flex h-12 min-w-24 items-center justify-between gap-3 rounded-md border px-3 text-left transition ${
+                active
+                  ? "border-zinc-950 bg-zinc-950 text-white dark:border-white dark:bg-white dark:text-zinc-950"
+                  : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
+              }`}
+            >
+              <span className="flex flex-col leading-tight">
+                <span className="text-sm font-medium">{relativeDateLabel(bucket.date, index)}</span>
+                <span className={`text-xs ${active ? "text-white/70 dark:text-zinc-950/60" : "text-zinc-500 dark:text-zinc-400"}`}>
+                  {shortDateLabel(bucket.date)}
+                </span>
+              </span>
+              <span
+                className={`rounded px-1.5 py-0.5 text-xs ${
+                  active
+                    ? "bg-white/15 dark:bg-zinc-950/10"
+                    : "bg-zinc-100 text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300"
+                }`}
+              >
+                {bucket.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -759,6 +870,7 @@ export function PaperDashboard({
   const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null);
   const [summary, setSummary] = useState<PaperListSummary>(initialData.summary);
   const [summarySource, setSummarySource] = useState(initialData.summary);
+  const [selectedDate, setSelectedDate] = useState<string | null>(initialData.selectedDate);
   const [papers, setPapers] = useState<AnalyzedPaper[]>(initialData.page.papers);
   const [papersSource, setPapersSource] = useState(initialData.page.papers);
   const [listTotal, setListTotal] = useState(initialData.page.total);
@@ -785,6 +897,7 @@ export function PaperDashboard({
   if (summarySource !== initialData.summary) {
     setSummarySource(initialData.summary);
     setSummary(initialData.summary);
+    setSelectedDate(initialData.selectedDate);
   }
 
   if (papersSource !== initialData.page.papers) {
@@ -802,6 +915,7 @@ export function PaperDashboard({
       filter: TagFilter,
       options: {
         append?: boolean;
+        date?: string | null;
         offset?: number;
         ids?: readonly string[];
       } = {},
@@ -815,6 +929,7 @@ export function PaperDashboard({
         offset: String(offset),
         limit: String(PAPER_LIST_PAGE_SIZE),
       });
+      const date = filter === "all" ? options.date ?? selectedDate : null;
       const ids =
         options.ids ??
         (filter === "favorites"
@@ -824,6 +939,10 @@ export function PaperDashboard({
             : filter === "killed_chat"
               ? killedChatFilterIds
               : undefined);
+
+      if (date) {
+        params.set("date", date);
+      }
 
       if (ids?.length) {
         params.set("ids", ids.join(","));
@@ -858,7 +977,7 @@ export function PaperDashboard({
         }
       }
     },
-    [favorites, killedChatFilterIds, runningChatFilterIds],
+    [favorites, killedChatFilterIds, runningChatFilterIds, selectedDate],
   );
 
   const loadPaperById = useCallback(async (paperId: string) => {
@@ -954,6 +1073,7 @@ export function PaperDashboard({
             ...current,
             totalPapers: Math.max(0, current.totalPapers - 1),
             countsByTag: nextCounts,
+            dateBuckets: adjustDateBuckets(current.dateBuckets, paperDateKey(removedPaper), -1),
           };
         });
       }
@@ -987,6 +1107,7 @@ export function PaperDashboard({
                 ...current,
                 totalPapers: current.totalPapers + 1,
                 countsByTag: nextCounts,
+                dateBuckets: adjustDateBuckets(current.dateBuckets, paperDateKey(removedPaper), 1),
               };
             });
           }
@@ -999,6 +1120,7 @@ export function PaperDashboard({
   const lastRun = summary.runs[0];
   const lastCompletedRun = summary.runs.find((run) => run.status === "completed");
   const countsByTag = summary.countsByTag ?? emptyCountsByTag();
+  const latestPaperDate = summary.dateBuckets[0]?.date ?? null;
   const favoritesCount = favorites.size > 0 ? favorites.size : summary.favoriteCount;
   const runningChatCount = runningChatFilterIds.length;
   const killedChatCount = killedChatFilterIds.length;
@@ -1036,14 +1158,23 @@ export function PaperDashboard({
 
   useEffect(() => {
     function handlePopState() {
-      const nextFilter = parseTagFilter(new URLSearchParams(window.location.search).get("tag"));
+      const params = new URLSearchParams(window.location.search);
+      const nextFilter = parseTagFilter(params.get("tag"));
+      const requestedDate = normalizePaperDateKey(params.get("date"));
+      const nextDate =
+        nextFilter === "all"
+          ? summary.dateBuckets.some((bucket) => bucket.date === requestedDate)
+            ? requestedDate
+            : latestPaperDate
+          : null;
       setActiveFilter(nextFilter);
-      void loadPaperPage(nextFilter, { append: false, offset: 0 });
+      setSelectedDate(nextDate);
+      void loadPaperPage(nextFilter, { append: false, date: nextDate, offset: 0 });
     }
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [loadPaperPage]);
+  }, [latestPaperDate, loadPaperPage, summary.dateBuckets]);
 
   useEffect(() => {
     if (summary.totalPapers === 0) {
@@ -1184,7 +1315,12 @@ export function PaperDashboard({
     // 切回 "全部" 保证目标卡片一定可见
     if (activeFilter !== "all") {
       setActiveFilter("all");
-      window.history.pushState({ tag: "all" }, "", currentUrlForFilter("all"));
+      setSelectedDate(latestPaperDate);
+      window.history.pushState(
+        { tag: "all", date: latestPaperDate },
+        "",
+        currentUrlForFilter("all", latestPaperDate),
+      );
     }
     // 先清空再设置，确保即便是同一个 id 也能重新触发滚动 + 高亮
     setFocusedPaperId(null);
@@ -1201,21 +1337,41 @@ export function PaperDashboard({
     });
   }
 
-  function selectFilter(filter: TagFilter) {
-    if (filter === activeFilter) {
-      setMobileFiltersOpen(false);
+  function selectPaperDate(date: string) {
+    if (date === selectedDate && activeFilter === "all") {
       return;
     }
 
-    setActiveFilter(filter);
+    setActiveFilter("all");
+    setSelectedDate(date);
     setMobileFiltersOpen(false);
     setPapers([]);
     setListTotal(0);
     setHasMorePapers(false);
     setNextPageOffset(0);
     setLoadError(null);
-    void loadPaperPage(filter, { append: false, offset: 0 });
-    window.history.pushState({ tag: filter }, "", currentUrlForFilter(filter));
+    void loadPaperPage("all", { append: false, date, offset: 0 });
+    window.history.pushState({ tag: "all", date }, "", currentUrlForFilter("all", date));
+  }
+
+  function selectFilter(filter: TagFilter) {
+    const nextDate = filter === "all" ? latestPaperDate : null;
+
+    if (filter === activeFilter && (filter !== "all" || selectedDate === nextDate)) {
+      setMobileFiltersOpen(false);
+      return;
+    }
+
+    setActiveFilter(filter);
+    setSelectedDate(nextDate);
+    setMobileFiltersOpen(false);
+    setPapers([]);
+    setListTotal(0);
+    setHasMorePapers(false);
+    setNextPageOffset(0);
+    setLoadError(null);
+    void loadPaperPage(filter, { append: false, date: nextDate, offset: 0 });
+    window.history.pushState({ tag: filter, date: nextDate }, "", currentUrlForFilter(filter, nextDate));
   }
 
   return (
@@ -1368,6 +1524,14 @@ export function PaperDashboard({
             {visiblePapers.length} / {listTotal}
           </p>
         </div>
+
+        {activeFilter === "all" ? (
+          <DateFilterBar
+            dates={summary.dateBuckets}
+            selectedDate={selectedDate}
+            onSelect={selectPaperDate}
+          />
+        ) : null}
 
         <section className="space-y-2">
           {visiblePapers.length > 0 ? (

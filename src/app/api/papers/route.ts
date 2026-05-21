@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { parseTagFilter } from "@/lib/arxiv/filters";
 import {
   getPaperListPage,
+  normalizePaperDateKey,
   normalizePageLimit,
   normalizePageOffset,
 } from "@/lib/arxiv/paper-list";
@@ -28,10 +29,12 @@ export async function GET(request: NextRequest) {
     const filter = parseTagFilter(url.searchParams.get("tag"));
     const offset = normalizePageOffset(url.searchParams.get("offset"));
     const limit = normalizePageLimit(url.searchParams.get("limit"));
+    const dateKey = normalizePaperDateKey(url.searchParams.get("date"));
     const state = await readArxivState();
     const page = getPaperListPage(state, filter, {
       offset,
       limit,
+      dateKey,
       paperIds: parsePaperIds(url),
     });
 
