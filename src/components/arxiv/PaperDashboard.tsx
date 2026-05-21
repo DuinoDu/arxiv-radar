@@ -9,8 +9,10 @@ import {
   Eye,
   FileText,
   Glasses,
+  Hand,
   Heart,
   History,
+  Map,
   MessageCircle,
   Plus,
   Tag,
@@ -71,6 +73,10 @@ const tagStyles: Record<PaperTag, string> = {
     "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-800 dark:border-fuchsia-900 dark:bg-fuchsia-950/50 dark:text-fuchsia-200",
   teleop:
     "border-orange-200 bg-orange-50 text-orange-800 dark:border-orange-900 dark:bg-orange-950/50 dark:text-orange-200",
+  slam:
+    "border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-900 dark:bg-sky-950/50 dark:text-sky-200",
+  umi:
+    "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-200",
 };
 
 const statusLabels: Record<RunStatus, string> = {
@@ -1321,6 +1327,22 @@ export function PaperDashboard({
               filter="teleop"
               icon={<Radio className="h-4 w-4" aria-hidden="true" />}
               label="teleop"
+              onSelect={selectFilter}
+            />
+            <FilterLink
+              active={activeFilter === "slam"}
+              count={countsByTag.slam}
+              filter="slam"
+              icon={<Map className="h-4 w-4" aria-hidden="true" />}
+              label="SLAM"
+              onSelect={selectFilter}
+            />
+            <FilterLink
+              active={activeFilter === "umi"}
+              count={countsByTag.umi}
+              filter="umi"
+              icon={<Hand className="h-4 w-4" aria-hidden="true" />}
+              label="UMI"
               onSelect={selectFilter}
             />
             <FilterLink

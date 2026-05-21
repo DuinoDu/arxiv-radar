@@ -24,8 +24,19 @@ const ModelAnalysisSchema = z.object({
       so101: z.boolean().default(false),
       vr: z.boolean().default(false),
       teleop: z.boolean().default(false),
+      slam: z.boolean().default(false),
+      umi: z.boolean().default(false),
     })
-    .default({ egocentric: false, vla: false, worldModel: false, so101: false, vr: false, teleop: false }),
+    .default({
+      egocentric: false,
+      vla: false,
+      worldModel: false,
+      so101: false,
+      vr: false,
+      teleop: false,
+      slam: false,
+      umi: false,
+    }),
   tagEvidence: z
     .object({
       egocentric: z.string().optional(),
@@ -34,6 +45,8 @@ const ModelAnalysisSchema = z.object({
       so101: z.string().optional(),
       vr: z.string().optional(),
       teleop: z.string().optional(),
+      slam: z.string().optional(),
+      umi: z.string().optional(),
     })
     .default({}),
   tagSource: z
@@ -44,6 +57,8 @@ const ModelAnalysisSchema = z.object({
       so101: TagSourceFieldSchema,
       vr: TagSourceFieldSchema,
       teleop: TagSourceFieldSchema,
+      slam: TagSourceFieldSchema,
+      umi: TagSourceFieldSchema,
     })
     .default({}),
   tagConfidence: z
@@ -54,6 +69,8 @@ const ModelAnalysisSchema = z.object({
       so101: z.coerce.number().min(0).max(1).optional(),
       vr: z.coerce.number().min(0).max(1).optional(),
       teleop: z.coerce.number().min(0).max(1).optional(),
+      slam: z.coerce.number().min(0).max(1).optional(),
+      umi: z.coerce.number().min(0).max(1).optional(),
     })
     .default({}),
   confidence: z.coerce.number().min(0).max(1).optional(),
@@ -125,6 +142,8 @@ function toTags(analysis: ModelAnalysis, fullText: PaperFullText) {
   addTag("so101", "so101", "LLM judged SO-100/SO-101 robot-arm usage from the supplied paper text.");
   addTag("vr", "vr", "LLM judged VR-headset usage from the supplied paper text.");
   addTag("teleop", "teleop", "LLM judged teleoperation usage from the supplied paper text.");
+  addTag("slam", "slam", "LLM judged SLAM usage from the supplied paper text.");
+  addTag("umi", "umi", "LLM judged UMI (Universal Manipulation Interface) usage from the supplied paper text.");
 
   return {
     tags: Array.from(tags),
@@ -174,6 +193,8 @@ async function requestAnalysis(article: ArxivArticle, fullText: PaperFullText, u
             "so101 只在论文明确使用 SO-100、SO100、SO-101、SO101 或 SO101-arm 机械臂进行实验、数据采集、评测、演示或机器人操作时为 true；只在相关工作、背景或未使用的可选平台中提到不算。",
             "vr 只在论文明确使用 VR 头显/HMD/虚拟现实头戴设备来做实验、数据采集、用户研究、遥操作、演示或评测时为 true；包括 Meta/Oculus Quest、HTC Vive、Valve Index、Varjo 等 VR/MR 头显。只做仿真、3D 可视化、VR 作为相关工作背景或没有头显实验的不算。",
             "teleop 只在论文明确涉及遥操作/teleoperation/remote operation/remote control，由人类远程控制机器人、机械臂、移动平台或机器人化身来完成任务、采集数据、示教、评测或实验时为 true；普通自动控制、远程监控、离线仿真、没有人类实时/远程控制机器人动作的不算。",
+            "slam 只在论文明确使用、提出、改进或评估 SLAM/Simultaneous Localization and Mapping/同时定位与建图（含 visual SLAM、LiDAR SLAM、visual-inertial SLAM/VIO、dense SLAM、neural SLAM、Gaussian/NeRF SLAM、semantic SLAM 等）来做机器人/移动平台的定位、建图、姿态估计或导航时为 true；只做纯里程计、纯定位（无建图）、纯重建（无在线定位）、SLAM 仅作背景或相关工作的不算。",
+            "umi 只在论文明确使用、复用、扩展或对比 UMI/Universal Manipulation Interface（Cheng Chi 等人提出的手持式 GoPro+夹爪便携数据采集装置，及其在野/in-the-wild 数据采集 + diffusion policy 训练流程，以及 Bimanual UMI/Mobile UMI/Fast-UMI/UMI-on-Legs 等明确派生工作）来采集人类示范、训练机器人策略、做操作学习或评测时为 true；只引用 UMI 论文作为相关工作、或在没有用到该 handheld gripper 数据采集装置/对应训练 pipeline 的普通 imitation/diffusion policy/示教学习论文不算。",
             "如果正文可用，tagEvidence 应优先引用正文里的具体证据；没有足够证据就把对应 tag 设为 false。",
           ].join("\n"),
       },
@@ -208,6 +229,8 @@ async function requestAnalysis(article: ArxivArticle, fullText: PaperFullText, u
               so101: "boolean",
               vr: "boolean",
               teleop: "boolean",
+              slam: "boolean",
+              umi: "boolean",
             },
             tagEvidence: {
               egocentric: "evidence string when true",
@@ -216,6 +239,8 @@ async function requestAnalysis(article: ArxivArticle, fullText: PaperFullText, u
               so101: "evidence string when true",
               vr: "evidence string when true",
               teleop: "evidence string when true",
+              slam: "evidence string when true",
+              umi: "evidence string when true",
             },
             tagSource: {
               egocentric: "title | abstract | full_text when true",
@@ -224,6 +249,8 @@ async function requestAnalysis(article: ArxivArticle, fullText: PaperFullText, u
               so101: "title | abstract | full_text when true",
               vr: "title | abstract | full_text when true",
               teleop: "title | abstract | full_text when true",
+              slam: "title | abstract | full_text when true",
+              umi: "title | abstract | full_text when true",
             },
             tagConfidence: {
               egocentric: "0 to 1 when true",
@@ -232,6 +259,8 @@ async function requestAnalysis(article: ArxivArticle, fullText: PaperFullText, u
               so101: "0 to 1 when true",
               vr: "0 to 1 when true",
               teleop: "0 to 1 when true",
+              slam: "0 to 1 when true",
+              umi: "0 to 1 when true",
             },
             confidence: "0 to 1",
           },
