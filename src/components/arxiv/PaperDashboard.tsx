@@ -12,7 +12,7 @@ import {
   Hand,
   Heart,
   History,
-  Map,
+  Map as MapIcon,
   MessageCircle,
   Plus,
   Tag,
@@ -1503,7 +1503,7 @@ export function PaperDashboard({
               active={activeFilter === "slam"}
               count={countsByTag.slam}
               filter="slam"
-              icon={<Map className="h-4 w-4" aria-hidden="true" />}
+              icon={<MapIcon className="h-4 w-4" aria-hidden="true" />}
               label="SLAM"
               onSelect={selectFilter}
             />
