@@ -29,6 +29,7 @@ import {
 } from "@/lib/arxiv/types";
 import {
   PAPER_LIST_PAGE_SIZE,
+  dateValueToPaperDateKey,
   normalizePaperDateKey,
   paperDateKey,
   type PaperCountsByTag,
@@ -170,11 +171,12 @@ function localDateKey(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
-function relativeDateLabel(date: string, index: number) {
+function relativeDateLabel(date: string, index: number, timeZone: string) {
   if (index === 0) return "最新";
 
   const target = dateKeyToLocalDate(date);
-  const today = dateKeyToLocalDate(localDateKey(new Date()));
+  const todayKey = dateValueToPaperDateKey(new Date(), timeZone) ?? localDateKey(new Date());
+  const today = dateKeyToLocalDate(todayKey);
   const diffDays = Math.round((today.getTime() - target.getTime()) / 86_400_000);
 
   if (diffDays === 0) return "今天";
@@ -288,10 +290,12 @@ function MetricPill({ label, value }: { label: string; value: ReactNode }) {
 function DateFilterBar({
   dates,
   selectedDate,
+  timeZone,
   onSelect,
 }: {
   dates: PaperListDateBucket[];
   selectedDate: string | null;
+  timeZone: string;
   onSelect: (date: string) => void;
 }) {
   if (dates.length === 0) {
@@ -318,7 +322,9 @@ function DateFilterBar({
               }`}
             >
               <span className="flex flex-col leading-tight">
-                <span className="text-sm font-medium">{relativeDateLabel(bucket.date, index)}</span>
+                <span className="text-sm font-medium">
+                  {relativeDateLabel(bucket.date, index, timeZone)}
+                </span>
                 <span className={`text-xs ${active ? "text-white/70 dark:text-zinc-950/60" : "text-zinc-500 dark:text-zinc-400"}`}>
                   {shortDateLabel(bucket.date)}
                 </span>
@@ -1073,7 +1079,11 @@ export function PaperDashboard({
             ...current,
             totalPapers: Math.max(0, current.totalPapers - 1),
             countsByTag: nextCounts,
-            dateBuckets: adjustDateBuckets(current.dateBuckets, paperDateKey(removedPaper), -1),
+            dateBuckets: adjustDateBuckets(
+              current.dateBuckets,
+              paperDateKey(removedPaper, timeZone),
+              -1,
+            ),
           };
         });
       }
@@ -1107,7 +1117,11 @@ export function PaperDashboard({
                 ...current,
                 totalPapers: current.totalPapers + 1,
                 countsByTag: nextCounts,
-                dateBuckets: adjustDateBuckets(current.dateBuckets, paperDateKey(removedPaper), 1),
+                dateBuckets: adjustDateBuckets(
+                  current.dateBuckets,
+                  paperDateKey(removedPaper, timeZone),
+                  1,
+                ),
               };
             });
           }
@@ -1115,7 +1129,7 @@ export function PaperDashboard({
 
       return null;
     });
-  }, [papers]);
+  }, [papers, timeZone]);
 
   const lastRun = summary.runs[0];
   const lastCompletedRun = summary.runs.find((run) => run.status === "completed");
@@ -1311,37 +1325,7 @@ export function PaperDashboard({
     };
   }, [focusedPaperId]);
 
-  function focusExistingPaper(id: string) {
-    // 切回 "全部" 保证目标卡片一定可见
-    if (activeFilter !== "all") {
-      setActiveFilter("all");
-      setSelectedDate(latestPaperDate);
-      window.history.pushState(
-        { tag: "all", date: latestPaperDate },
-        "",
-        currentUrlForFilter("all", latestPaperDate),
-      );
-    }
-    // 先清空再设置，确保即便是同一个 id 也能重新触发滚动 + 高亮
-    setFocusedPaperId(null);
-    if (papers.some((paper) => paper.id === id)) {
-      setTimeout(() => setFocusedPaperId(id), 0);
-      return;
-    }
-
-    void loadPaperById(id).then((paper) => {
-      if (paper) {
-        setPapers((current) => mergePaperLists([paper], current));
-      }
-      setTimeout(() => setFocusedPaperId(id), 0);
-    });
-  }
-
-  function selectPaperDate(date: string) {
-    if (date === selectedDate && activeFilter === "all") {
-      return;
-    }
-
+  function switchToAllDate(date: string | null) {
     setActiveFilter("all");
     setSelectedDate(date);
     setMobileFiltersOpen(false);
@@ -1350,8 +1334,38 @@ export function PaperDashboard({
     setHasMorePapers(false);
     setNextPageOffset(0);
     setLoadError(null);
-    void loadPaperPage("all", { append: false, date, offset: 0 });
     window.history.pushState({ tag: "all", date }, "", currentUrlForFilter("all", date));
+    return loadPaperPage("all", { append: false, date, offset: 0 });
+  }
+
+  function focusExistingPaper(id: string) {
+    // 先清空再设置，确保即便是同一个 id 也能重新触发滚动 + 高亮
+    setFocusedPaperId(null);
+
+    void (async () => {
+      const existingPaper = papers.find((paper) => paper.id === id);
+      const paper = existingPaper ?? await loadPaperById(id);
+      const targetDate = paper ? paperDateKey(paper, timeZone) ?? latestPaperDate : latestPaperDate;
+      const needsDateSwitch = activeFilter !== "all" || selectedDate !== targetDate;
+
+      if (needsDateSwitch) {
+        await switchToAllDate(targetDate);
+      }
+
+      if (paper) {
+        setPapers((current) => mergePaperLists([paper], current));
+      }
+
+      setTimeout(() => setFocusedPaperId(id), 0);
+    })();
+  }
+
+  function selectPaperDate(date: string) {
+    if (date === selectedDate && activeFilter === "all") {
+      return;
+    }
+
+    void switchToAllDate(date);
   }
 
   function selectFilter(filter: TagFilter) {
@@ -1529,6 +1543,7 @@ export function PaperDashboard({
           <DateFilterBar
             dates={summary.dateBuckets}
             selectedDate={selectedDate}
+            timeZone={timeZone}
             onSelect={selectPaperDate}
           />
         ) : null}

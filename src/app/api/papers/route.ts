@@ -11,6 +11,8 @@ import { readArxivState } from "@/lib/arxiv/store";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const TIME_ZONE = process.env.APP_TIME_ZONE || "Asia/Shanghai";
+
 function parsePaperIds(url: URL): string[] | undefined {
   const values = [
     ...url.searchParams.getAll("id"),
@@ -34,7 +36,8 @@ export async function GET(request: NextRequest) {
     const page = getPaperListPage(state, filter, {
       offset,
       limit,
-      dateKey,
+      dateKey: filter === "all" ? dateKey : null,
+      timeZone: TIME_ZONE,
       paperIds: parsePaperIds(url),
     });
 

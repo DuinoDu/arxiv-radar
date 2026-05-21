@@ -17,7 +17,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<Se
   const initialFilter = parseTagFilter(params?.tag);
   const initialDate = normalizePaperDateKey(params?.date);
   const state = await readArxivState();
-  const initialData = getInitialPaperListData(state, initialFilter, initialDate);
+  const initialData = getInitialPaperListData(state, initialFilter, initialDate, TIME_ZONE);
 
   return (
     <PaperDashboard
