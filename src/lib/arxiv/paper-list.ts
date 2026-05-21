@@ -3,14 +3,21 @@ import type { TagFilter } from "./filters";
 
 export const PAPER_LIST_PAGE_SIZE = 40;
 export const PAPER_LIST_MAX_PAGE_SIZE = 80;
+export const DEFAULT_PAPER_LIST_TIME_ZONE = "UTC";
 
 export type PaperCountsByTag = Record<PaperTag, number>;
+
+export interface PaperListDateBucket {
+  date: string;
+  count: number;
+}
 
 export interface PaperListSummary {
   totalPapers: number;
   processedCount: number;
   favoriteCount: number;
   countsByTag: PaperCountsByTag;
+  dateBuckets: PaperListDateBucket[];
   runs: AnalysisRun[];
   updatedAt: string;
 }
@@ -26,6 +33,7 @@ export interface PaperListPage {
 export interface PaperListInitialData {
   summary: PaperListSummary;
   page: PaperListPage;
+  selectedDate: string | null;
 }
 
 export function getVisiblePapers(state: ArxivState): AnalyzedPaper[] {
@@ -41,13 +49,92 @@ export function countPaperTags(papers: readonly AnalyzedPaper[]): PaperCountsByT
   ) as PaperCountsByTag;
 }
 
-export function getPaperListSummary(state: ArxivState): PaperListSummary {
+const dateFormatters = new Map<string, Intl.DateTimeFormat>();
+
+function getDateFormatter(timeZone: string): Intl.DateTimeFormat {
+  const cached = dateFormatters.get(timeZone);
+  if (cached) return cached;
+
+  try {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      day: "2-digit",
+      month: "2-digit",
+      timeZone,
+      year: "numeric",
+    });
+    dateFormatters.set(timeZone, formatter);
+    return formatter;
+  } catch (error) {
+    if (timeZone === DEFAULT_PAPER_LIST_TIME_ZONE) {
+      throw error;
+    }
+    return getDateFormatter(DEFAULT_PAPER_LIST_TIME_ZONE);
+  }
+}
+
+export function dateValueToPaperDateKey(
+  value: Date | string | undefined,
+  timeZone = DEFAULT_PAPER_LIST_TIME_ZONE,
+): string | null {
+  if (!value) return null;
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const parts = getDateFormatter(timeZone).formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+
+  return year && month && day ? `${year}-${month}-${day}` : null;
+}
+
+export function paperDateKey(
+  paper: AnalyzedPaper,
+  timeZone = DEFAULT_PAPER_LIST_TIME_ZONE,
+): string | null {
+  return dateValueToPaperDateKey(
+    paper.publishedAt ?? paper.updatedAt ?? paper.analyzedAt,
+    timeZone,
+  );
+}
+
+export function normalizePaperDateKey(value: string | string[] | null | undefined): string | null {
+  const date = Array.isArray(value) ? value[0] : value;
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return null;
+  }
+
+  return date;
+}
+
+export function getPaperDateBuckets(
+  papers: readonly AnalyzedPaper[],
+  timeZone = DEFAULT_PAPER_LIST_TIME_ZONE,
+): PaperListDateBucket[] {
+  const counts = new Map<string, number>();
+  for (const paper of papers) {
+    const date = paperDateKey(paper, timeZone);
+    if (!date) continue;
+    counts.set(date, (counts.get(date) ?? 0) + 1);
+  }
+
+  return Array.from(counts.entries())
+    .sort(([left], [right]) => right.localeCompare(left))
+    .map(([date, count]) => ({ date, count }));
+}
+
+export function getPaperListSummary(
+  state: ArxivState,
+  timeZone = DEFAULT_PAPER_LIST_TIME_ZONE,
+): PaperListSummary {
   const visiblePapers = getVisiblePapers(state);
   return {
     totalPapers: visiblePapers.length,
     processedCount: state.processedArticleIds.length,
     favoriteCount: state.favoriteIds.length,
     countsByTag: countPaperTags(visiblePapers),
+    dateBuckets: getPaperDateBuckets(visiblePapers, timeZone),
     runs: state.runs,
     updatedAt: state.updatedAt,
   };
@@ -73,12 +160,20 @@ export function filterPapers(
   options: {
     favoriteIds?: ReadonlySet<string>;
     paperIds?: ReadonlySet<string>;
+    dateKey?: string | null;
+    timeZone?: string;
   } = {},
 ): AnalyzedPaper[] {
   let result = papers;
 
   if (options.paperIds) {
     result = result.filter((paper) => options.paperIds?.has(paper.id));
+  }
+
+  if (options.dateKey) {
+    result = result.filter(
+      (paper) => paperDateKey(paper, options.timeZone) === options.dateKey,
+    );
   }
 
   if (filter === "all") {
@@ -104,13 +199,20 @@ export function getPaperListPage(
     offset?: number;
     limit?: number;
     paperIds?: readonly string[];
+    dateKey?: string | null;
+    timeZone?: string;
   } = {},
 ): PaperListPage {
   const offset = normalizePageOffset(options.offset);
   const limit = normalizePageLimit(options.limit);
   const favoriteIds = new Set(state.favoriteIds);
   const paperIds = options.paperIds?.length ? new Set(options.paperIds) : undefined;
-  const filtered = filterPapers(getVisiblePapers(state), filter, { favoriteIds, paperIds });
+  const filtered = filterPapers(getVisiblePapers(state), filter, {
+    favoriteIds,
+    paperIds,
+    dateKey: options.dateKey,
+    timeZone: options.timeZone,
+  });
   const papers = filtered.slice(offset, offset + limit);
 
   return {
@@ -125,12 +227,26 @@ export function getPaperListPage(
 export function getInitialPaperListData(
   state: ArxivState,
   filter: TagFilter,
+  requestedDate?: string | null,
+  timeZone = DEFAULT_PAPER_LIST_TIME_ZONE,
 ): PaperListInitialData {
+  const summary = getPaperListSummary(state, timeZone);
+  const normalizedRequestedDate = requestedDate ?? null;
+  const selectedDate =
+    filter === "all"
+      ? summary.dateBuckets.some((bucket) => bucket.date === normalizedRequestedDate)
+        ? normalizedRequestedDate
+        : summary.dateBuckets[0]?.date ?? null
+      : null;
+
   return {
-    summary: getPaperListSummary(state),
+    summary,
     page: getPaperListPage(state, filter, {
       offset: 0,
       limit: PAPER_LIST_PAGE_SIZE,
+      dateKey: selectedDate,
+      timeZone,
     }),
+    selectedDate,
   };
 }
