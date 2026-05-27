@@ -43,7 +43,7 @@ export async function GET() {
     } satisfies ChatStatusResponse);
   }
 
-  const state = await readArxivState();
+  const state = await readArxivState(session.user.id);
   const visiblePaperIds = new Set(
     state.papers.filter((paper) => !paper.removed).map((paper) => paper.id),
   );

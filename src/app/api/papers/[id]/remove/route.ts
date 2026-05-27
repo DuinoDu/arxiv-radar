@@ -29,7 +29,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
   }
 
   try {
-    const mutated = await markPaperRemoved(paperId);
+    const mutated = await markPaperRemoved(auth.session.user.id, paperId);
     return NextResponse.json({ ok: true, id: paperId, mutated });
   } catch (error) {
     return NextResponse.json(

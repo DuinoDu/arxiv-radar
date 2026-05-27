@@ -25,7 +25,7 @@ export async function GET() {
   const auth = await requireAuthSession();
   if (!auth.ok) return auth.response;
 
-  const settings = await readAppSettings();
+  const settings = await readAppSettings(auth.session.user.id);
   return NextResponse.json(toPublicAppSettings(settings));
 }
 
@@ -40,13 +40,13 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const current = await readAppSettings();
+  const current = await readAppSettings(auth.session.user.id);
 
   try {
     const next = settingsFromPublicInput(body, current);
     const resetPaperTasks = conductorProjectKey(current) !== conductorProjectKey(next);
 
-    await updateAppSettings(next, { resetPaperTasks });
+    await updateAppSettings(auth.session.user.id, next, { resetPaperTasks });
     resetConductorClient();
 
     return NextResponse.json(toPublicAppSettings(next));

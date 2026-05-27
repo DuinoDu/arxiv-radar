@@ -165,7 +165,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
           : typeof body?.backendType === "string" && body.backendType.trim()
             ? body.backendType.trim()
             : null;
-      const settings = await readAppSettings();
+      const settings = await readAppSettings(session.user.id);
       const configuredBackend = settings.conductor.backendType || null;
       const backendType = explicitBackend ?? configuredBackend ?? undefined;
       const result = await restartConductorTask(taskId, {

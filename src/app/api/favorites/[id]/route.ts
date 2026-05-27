@@ -29,7 +29,7 @@ export async function POST(_request: Request, context: RouteContext) {
   }
 
   try {
-    await addFavoriteId(paperId);
+    await addFavoriteId(auth.session.user.id, paperId);
     return NextResponse.json({ ok: true, id: paperId });
   } catch (error) {
     return NextResponse.json(
@@ -51,7 +51,7 @@ export async function DELETE(_request: Request, context: RouteContext) {
   }
 
   try {
-    await removeFavoriteId(paperId);
+    await removeFavoriteId(auth.session.user.id, paperId);
     return NextResponse.json({ ok: true, id: paperId });
   } catch (error) {
     return NextResponse.json(

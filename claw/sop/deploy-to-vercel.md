@@ -2,7 +2,7 @@
 
 ## Mission
 
-Ship the app to Vercel with a reproducible command path, verified runtime configuration, and a persistence plan that survives serverless restarts.
+Ship the app to Vercel with a reproducible command path, verified runtime configuration, and durable PostgreSQL persistence.
 
 The deploy agent owns the deployment outcome, not just the CLI command. Do not call the deploy done until the production alias responds and the critical routes have been checked.
 
@@ -12,7 +12,7 @@ The deploy agent owns the deployment outcome, not just the CLI command. Do not c
 - Do not print secrets. Add sensitive values through Vercel Dashboard, `vercel env add --sensitive`, or stdin.
 - Keep unrelated local changes intact. If the worktree is dirty, identify what will be deployed before running `vercel --prod`.
 - Prefer a preview deploy first unless the user explicitly asks for a production redeploy.
-- For apps that write data, verify the storage backend before production. Vercel Functions do not provide durable local file storage.
+- Verify `DATABASE_URL` and migrations before production. Vercel Functions do not provide durable local file storage.
 
 ## Inputs
 
@@ -21,13 +21,14 @@ Collect these before deployment:
 - Vercel scope/team, for example `--scope <team-or-user>`.
 - Vercel project name and production domain.
 - Required runtime env vars.
-- Persistent storage choice.
-- Cron schedule and any required `CRON_SECRET`.
+- PostgreSQL provider and `DATABASE_URL`.
+- Cron schedule and required `CRON_SECRET`.
 - Expected smoke-test URLs.
 
 For this app, production should include:
 
 ```bash
+DATABASE_URL=...
 OPENAI_URL=...
 OPENAI_API_KEY=...
 OPENAI_MODEL=...
@@ -36,10 +37,14 @@ APP_TIME_ZONE=Asia/Shanghai
 ARXIV_LIMIT=100
 OPENAI_CONCURRENCY=3
 CRON_SECRET=...
-ARXIV_STORE_BACKEND=blob
-ARXIV_BLOB_STATE_PATH=arxiv/arxiv-state.json
-ARXIV_BLOB_ACCESS=private
-BLOB_READ_WRITE_TOKEN=...
+CONDUCTOR_BASE_URL=https://conductor-ai.top
+CONDUCTOR_SSO_CLIENT_ID=arxiv-radar
+CONDUCTOR_SSO_CLIENT_SECRET=...
+ARXIV_AUTH_SECRET=...
+CONDUCTOR_DAEMON_HOST=...
+CONDUCTOR_WORKSPACE_PATH=...
+CONDUCTOR_APP_NAME=arxiv-radar
+CONDUCTOR_BACKEND_TYPE=
 ```
 
 ## Preflight
@@ -48,6 +53,7 @@ Run these checks from the repository root:
 
 ```bash
 git status --short --branch
+npm run db:migrate
 npm run lint
 npm run build
 vercel whoami
@@ -64,6 +70,7 @@ cat next.config.ts
 
 Gate:
 
+- Migrations must pass against the production database or a staging database before deploy.
 - Build must pass locally.
 - The Vercel project must be the intended project.
 - Required production env vars must exist.
@@ -71,23 +78,25 @@ Gate:
 
 ## Storage Decision
 
-Use Vercel Blob for this app unless the requirements change.
+Use PostgreSQL for this app.
 
 Reasoning:
 
-- The app stores a small JSON state file.
-- Writes are low frequency: scheduled cron plus occasional manual/admin trigger.
-- Blob is simpler than a relational database and works cleanly in Vercel Functions.
+- Config, tags, paper lists, favorites, runs, and Conductor task bindings are user-scoped.
+- Multi-user writes need transaction boundaries and relational constraints.
+- Cron must query per-user schedules and process users independently.
 
-Create or connect a private Blob store:
+Run migrations whenever schema changes:
 
 ```bash
-vercel blob create-store <store-name> --access private --region iad1 --scope <scope>
+DATABASE_URL=... npm run db:migrate
 ```
 
-When prompted, link it to the project and select the required environments. Vercel injects `BLOB_READ_WRITE_TOKEN` after the store is linked.
+If migrating legacy JSON state, import it under one explicit Conductor user:
 
-Move to Postgres/Neon/Supabase when the app needs relational querying, multi-user writes, complex filtering, full-text search, or stronger transaction boundaries.
+```bash
+DATABASE_URL=... ARXIV_USER_ID=<conductor-user-id> npm run db:import-json
+```
 
 ## Environment Setup
 
@@ -97,20 +106,17 @@ List current env vars:
 vercel env ls --scope <scope>
 ```
 
-Add non-sensitive values:
-
-```bash
-vercel env add ARXIV_STORE_BACKEND production --value blob --yes --force --scope <scope>
-vercel env add ARXIV_BLOB_STATE_PATH production --value arxiv/arxiv-state.json --yes --force --scope <scope>
-vercel env add ARXIV_BLOB_ACCESS production --value private --yes --force --scope <scope>
-```
-
 Add sensitive values without echoing them into logs:
 
 ```bash
+vercel env add DATABASE_URL production --sensitive --scope <scope>
 vercel env add OPENAI_API_KEY production --sensitive --scope <scope>
 vercel env add CRON_SECRET production --sensitive --scope <scope>
+vercel env add CONDUCTOR_SSO_CLIENT_SECRET production --sensitive --scope <scope>
+vercel env add ARXIV_AUTH_SECRET production --sensitive --scope <scope>
 ```
+
+Add non-sensitive values through the dashboard or `vercel env add` as appropriate.
 
 If preview deployments need to run the app, repeat env setup for `preview`. If only production is required, production envs are sufficient.
 
@@ -148,16 +154,16 @@ Smoke test production:
 
 ```bash
 curl -I https://<production-domain>
-curl -sS https://<production-domain> | rg "<expected-page-marker>"
+curl -sS https://<production-domain> | rg "Conductor"
 curl -sS -o /tmp/cron.json -w "%{http_code}\n" https://<production-domain>/api/cron/arxiv
 ```
 
 Expected results for this app:
 
-- `/` returns `200`.
-- Page contains `arxiv-radar`.
+- `/` returns `200` and shows the login gate when unauthenticated.
+- Unauthenticated homepage does not expose paper titles, summaries, or tag lists.
 - `/api/cron/arxiv` returns `401` without `CRON_SECRET` in production.
-- With Vercel Cron, `CRON_SECRET` is sent as an `Authorization` header automatically.
+- Authenticated cron with `Authorization: Bearer $CRON_SECRET` returns per-user results.
 
 Optional authenticated cron smoke test:
 
@@ -193,12 +199,11 @@ Report only high-signal facts:
 - Production URL.
 - Deployment URL and status.
 - Env/storage changes made.
+- Migration status.
 - Smoke-test results.
 - Any unresolved risk, for example missing preview envs or unverified cron execution.
 
 Useful references:
 
 - Vercel CLI deploy: https://vercel.com/docs/cli/deploy
-- Vercel Blob SDK: https://vercel.com/docs/storage/vercel-blob/using-blob-sdk
-- Vercel Blob CLI: https://vercel.com/docs/cli/blob
 - Vercel Cron Jobs: https://vercel.com/docs/cron-jobs/manage-cron-jobs

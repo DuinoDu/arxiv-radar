@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { appTimeZone } from "@/lib/app-settings";
 import { runArxivAnalysis } from "@/lib/arxiv/job";
-import { readAppSettings, readArxivState } from "@/lib/arxiv/store";
+import { listCronUsers, readAppSettings, readArxivState } from "@/lib/arxiv/store";
 import type { AnalysisRun, AppSettings } from "@/lib/arxiv/types";
+import { requireAuthSession } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -78,7 +79,7 @@ function hasRunForScheduledWindow(
   });
 }
 
-async function automaticRunSkipReason(settings: AppSettings) {
+async function automaticRunSkipReason(userId: string, settings: AppSettings) {
   if (!settings.cron.enabled) {
     return "auto_fetch_disabled";
   }
@@ -92,7 +93,7 @@ async function automaticRunSkipReason(settings: AppSettings) {
     return "not_due";
   }
 
-  const state = await readArxivState();
+  const state = await readArxivState(userId);
   if (hasRunForScheduledWindow(state.runs, settings, now, timeZone)) {
     return "already_ran_today";
   }
@@ -100,42 +101,76 @@ async function automaticRunSkipReason(settings: AppSettings) {
   return null;
 }
 
-async function handle(request: NextRequest) {
+function runOptions(request: NextRequest, settings: AppSettings) {
+  return {
+    limit: Number(request.nextUrl.searchParams.get("limit") || 100),
+    force: request.nextUrl.searchParams.get("force") === "1",
+    reanalyzeExisting:
+      request.nextUrl.searchParams.get("reanalyze") === "existing" ||
+      request.nextUrl.searchParams.get("existing") === "1",
+    sourceUrl: settings.arxivDailyUrl,
+  };
+}
+
+async function handleAutomatic(request: NextRequest) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const settings = await readAppSettings();
-  const skipReason = isAutomaticRequest(request)
-    ? await automaticRunSkipReason(settings)
-    : null;
+  const users = await listCronUsers();
+  const results = [];
 
-  if (skipReason) {
-    return NextResponse.json({
-      ok: true,
-      skipped: true,
-      reason: skipReason,
-      cron: {
-        enabled: settings.cron.enabled,
-        localTime: settings.cron.localTime,
-        timeZone: appTimeZone(),
-      },
-    });
+  for (const user of users) {
+    const skipReason = await automaticRunSkipReason(user.userId, user.settings);
+    if (skipReason) {
+      results.push({
+        userId: user.userId,
+        skipped: true,
+        reason: skipReason,
+        cron: {
+          enabled: user.settings.cron.enabled,
+          localTime: user.settings.cron.localTime,
+          timeZone: appTimeZone(),
+        },
+      });
+      continue;
+    }
+
+    try {
+      const result = await runArxivAnalysis(
+        user.userId,
+        runOptions(request, user.settings),
+      );
+      results.push({
+        userId: user.userId,
+        ok: true,
+        run: result.run,
+        analyzedPaperIds: result.papers.map((paper) => paper.id),
+      });
+    } catch (error) {
+      results.push({
+        userId: user.userId,
+        ok: false,
+        error: (error as Error).message,
+      });
+    }
   }
 
-  const limit = Number(request.nextUrl.searchParams.get("limit") || 100);
-  const force = request.nextUrl.searchParams.get("force") === "1";
-  const reanalyzeExisting =
-    request.nextUrl.searchParams.get("reanalyze") === "existing" ||
-    request.nextUrl.searchParams.get("existing") === "1";
+  return NextResponse.json({
+    ok: results.every((result) => result.ok !== false),
+    users: results,
+  });
+}
+
+async function handleManual(request: NextRequest) {
+  const auth = await requireAuthSession();
+  if (!auth.ok) return auth.response;
+
+  const userId = auth.session.user.id;
+  const settings = await readAppSettings(userId);
 
   try {
-    const result = await runArxivAnalysis({
-      limit,
-      force,
-      reanalyzeExisting,
-      sourceUrl: settings.arxivDailyUrl,
-    });
+    const result = await runArxivAnalysis(userId, runOptions(request, settings));
     return NextResponse.json({
       ok: true,
       run: result.run,
@@ -150,6 +185,12 @@ async function handle(request: NextRequest) {
       { status: 500 },
     );
   }
+}
+
+async function handle(request: NextRequest) {
+  return isAutomaticRequest(request)
+    ? handleAutomatic(request)
+    : handleManual(request);
 }
 
 export async function GET(request: NextRequest) {

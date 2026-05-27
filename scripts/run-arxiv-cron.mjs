@@ -6,7 +6,7 @@ const url = new URL("/api/cron/arxiv", baseUrl);
 url.searchParams.set("limit", limit);
 
 const response = await fetch(url, {
-  method: "POST",
+  method: "GET",
   headers: cronSecret
     ? {
         Authorization: `Bearer ${cronSecret}`,

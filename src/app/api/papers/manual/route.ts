@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
 
   try {
     if (!payload.force) {
-      const state = await readArxivState();
+      const state = await readArxivState(auth.session.user.id);
       if (state.papers.some((paper) => paper.id === arxivId)) {
         return NextResponse.json(
           { ok: false, error: `论文已存在：${arxivId}`, paperId: arxivId },
@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
     const analyzed = await analyzeArticle(article, runId);
     const finalPaper = mergeTags(analyzed, manualTags);
 
-    await addManualPaper(finalPaper);
+    await addManualPaper(auth.session.user.id, finalPaper);
 
     return NextResponse.json({ ok: true, paper: finalPaper });
   } catch (error) {

@@ -12,8 +12,7 @@
  * the BFF trust boundary is unchanged — the token never leaves Node except
  * when the user edits it in the settings popup.
  */
-import { requireConductorValue } from "@/lib/app-settings";
-import { readAppSettings } from "@/lib/arxiv/store";
+import { createEnvAppSettings, requireConductorValue } from "@/lib/app-settings";
 import type { AuthSession } from "@/lib/auth/session";
 
 async function getRawConductorConfig(session?: AuthSession) {
@@ -24,7 +23,7 @@ async function getRawConductorConfig(session?: AuthSession) {
     };
   }
 
-  const settings = await readAppSettings();
+  const settings = createEnvAppSettings();
   return {
     baseUrl: requireConductorValue(settings.conductor.baseUrl, "baseUrl").replace(/\/+$/, ""),
     authHeader: `Bearer ${requireConductorValue(settings.conductor.token, "token")}`,

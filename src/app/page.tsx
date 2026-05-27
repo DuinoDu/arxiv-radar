@@ -23,7 +23,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<Se
     return <LoginRequired />;
   }
 
-  const state = await readArxivState();
+  const state = await readArxivState(authUser.id);
   const initialData = getInitialPaperListData(state, initialFilter, initialDate, TIME_ZONE);
 
   return (

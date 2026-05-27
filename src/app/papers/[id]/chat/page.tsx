@@ -43,7 +43,7 @@ export default async function PaperChatPage({ params, searchParams }: PageProps)
     return <LoginRequired />;
   }
 
-  const state = await readArxivState();
+  const state = await readArxivState(authUser.id);
   const paper = state.papers.find((candidate) => candidate.id === paperId);
 
   if (!paper) {

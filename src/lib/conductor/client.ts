@@ -7,7 +7,7 @@
  */
 import { promises as fs } from "node:fs";
 import { connect, type AppClient } from "@love-moon/app-sdk/server";
-import { requireConductorValue } from "@/lib/app-settings";
+import { createEnvAppSettings, requireConductorValue } from "@/lib/app-settings";
 import { readAppSettings } from "@/lib/arxiv/store";
 import type { AuthSession } from "@/lib/auth/session";
 
@@ -47,7 +47,7 @@ async function getConnectionConfig(session?: AuthSession) {
     };
   }
 
-  const settings = await readAppSettings();
+  const settings = createEnvAppSettings();
   return {
     baseUrl: requireConductorValue(settings.conductor.baseUrl, "baseUrl"),
     bearerToken: requireConductorValue(settings.conductor.token, "token"),
@@ -111,7 +111,9 @@ export async function getConductorClient(session?: AuthSession): Promise<AppClie
  * remote daemon will still 4xx and the operator can provision the path.
  */
 export async function bindArxivRadarProject(session?: AuthSession) {
-  const settings = await readAppSettings();
+  const settings = session
+    ? await readAppSettings(session.user.id)
+    : createEnvAppSettings();
   const workspacePath = requireConductorValue(
     settings.conductor.workspacePath,
     "workspacePath",

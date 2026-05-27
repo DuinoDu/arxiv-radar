@@ -9,8 +9,8 @@
  *   2. creates a Conductor task scoped to the paper, seeded with a short
  *      initial message pointing at the arXiv HTML so the AI's harness can
  *      fetch the paper text on demand,
- *   3. persists the resulting `{ userId → paperId → taskId }` mapping into our
- *      shared state file (and Vercel Blob, when configured).
+ *   3. persists the resulting `{ userId → paperId → taskId }` mapping into
+ *      the user-scoped database tables.
  *
  * On subsequent calls the persisted mapping is returned directly — no
  * second task gets created.
@@ -24,16 +24,10 @@
  *
  * Caveat: this dedup is **single-process**. On Vercel (or any autoscaled
  * serverless deploy) two concurrent requests can land on different Node
- * instances and both will pass the recheck; both will create a Conductor
- * task, and Blob's OCC retry will let the *later* `setUserPaperTaskBinding`
- * win (the updater blindly overwrites). The winner's task is then
- * orphaned on Conductor, since the persisted mapping points at the loser
- * (in temporal-write order). If it becomes material, replace this section
- * with: stamp a
- * `pending` sentinel via `setUserPaperTaskBinding` *before* `tasks.create`,
- * using ifAbsent / ifMatch semantics, so the second writer detects the
- * conflict, deletes its own just-created task, and refetches the winner's
- * taskId.
+ * instances and both will pass the recheck; both can create a Conductor task,
+ * and the later database upsert can replace the earlier task mapping. If it
+ * becomes material, replace this section with a real per-user-paper advisory
+ * lock or pending row.
  */
 import { NextResponse } from "next/server";
 import { isConductorAppError } from "@love-moon/app-sdk";
@@ -100,7 +94,7 @@ export async function POST(request: Request) {
   try {
     // Up-front existence check on the fast path too: never echo a stored
     // binding for a paperId that's no longer in our catalogue.
-    const state = await readArxivState();
+    const state = await readArxivState(session.user.id);
     const paper = state.papers.find((candidate) => candidate.id === paperId);
     if (!paper) {
       return NextResponse.json(
@@ -145,7 +139,7 @@ async function bindWithDedup(
   if (ongoing) return ongoing;
 
   const promise = (async (): Promise<BindResult> => {
-    const settings = await readAppSettings();
+    const settings = await readAppSettings(session.user.id);
     const project = await bindArxivRadarProject(session);
     const client = await getConductorClient(session);
     // Backend selection: settings-configured backend type maps to a key in

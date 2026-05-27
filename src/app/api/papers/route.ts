@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     const offset = normalizePageOffset(url.searchParams.get("offset"));
     const limit = normalizePageLimit(url.searchParams.get("limit"));
     const dateKey = normalizePaperDateKey(url.searchParams.get("date"));
-    const state = await readArxivState();
+    const state = await readArxivState(auth.session.user.id);
     const page = getPaperListPage(state, filter, {
       offset,
       limit,

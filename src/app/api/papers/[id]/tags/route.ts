@@ -66,7 +66,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   }
 
   try {
-    await updatePaperTags(paperId, tags);
+    await updatePaperTags(auth.session.user.id, paperId, tags);
     return NextResponse.json({ ok: true, id: paperId, tags });
   } catch (error) {
     return NextResponse.json(

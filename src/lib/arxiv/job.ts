@@ -11,7 +11,7 @@ import type {
 const DEFAULT_LIMIT = 100;
 const EXISTING_PAPERS_SOURCE = "local:existing-papers";
 
-let activeRun: Promise<RunArxivAnalysisResult> | undefined;
+const activeRuns = new Map<string, Promise<RunArxivAnalysisResult>>();
 
 function createRunId() {
   return `run_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -64,19 +64,20 @@ function selectNewArticles(
 }
 
 async function runArxivAnalysisInternal(
+  userId: string,
   options: RunArxivAnalysisOptions = {},
 ): Promise<RunArxivAnalysisResult> {
-  const settings = await readAppSettings();
+  const settings = await readAppSettings(userId);
   const limit = toLimit(options.limit);
   const sourceUrl = options.reanalyzeExisting
     ? EXISTING_PAPERS_SOURCE
     : options.sourceUrl || settings.arxivDailyUrl || ARXIV_RECENT_URL;
   let run = createInitialRun(sourceUrl);
 
-  await upsertRun(run);
+  await upsertRun(userId, run);
 
   try {
-    const state = await readArxivState();
+    const state = await readArxivState(userId);
     const processedIds = new Set(state.processedArticleIds);
     const articles = options.reanalyzeExisting
       ? state.papers
@@ -110,7 +111,7 @@ async function runArxivAnalysisInternal(
           : undefined,
     };
 
-    await finishRun(run, papers);
+    await finishRun(userId, run, papers);
 
     return {
       run,
@@ -124,17 +125,20 @@ async function runArxivAnalysisInternal(
       failedCount: run.failedCount || 1,
       message: (error as Error).message,
     };
-    await upsertRun(run);
+    await upsertRun(userId, run);
     throw error;
   }
 }
 
-export function runArxivAnalysis(options: RunArxivAnalysisOptions = {}) {
-  if (!activeRun) {
-    activeRun = runArxivAnalysisInternal(options).finally(() => {
-      activeRun = undefined;
-    });
-  }
+export function runArxivAnalysis(userId: string, options: RunArxivAnalysisOptions = {}) {
+  const activeRun = activeRuns.get(userId);
+  if (activeRun) return activeRun;
 
-  return activeRun;
+  const nextRun = runArxivAnalysisInternal(userId, options).finally(() => {
+    if (activeRuns.get(userId) === nextRun) {
+      activeRuns.delete(userId);
+    }
+  });
+  activeRuns.set(userId, nextRun);
+  return nextRun;
 }

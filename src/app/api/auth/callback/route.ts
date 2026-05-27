@@ -8,6 +8,7 @@ import {
   setSessionCookie,
   type AuthUser,
 } from "@/lib/auth/session";
+import { upsertAuthUser } from "@/lib/arxiv/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -87,14 +88,17 @@ export async function GET(request: NextRequest) {
       return redirect;
     }
 
+    const resolvedConductorBaseUrl =
+      typeof payload.conductor_base_url === "string"
+        ? payload.conductor_base_url.replace(/\/+$/, "")
+        : conductorBaseUrl;
+    await upsertAuthUser(user, { conductorBaseUrl: resolvedConductorBaseUrl });
+
     const redirect = NextResponse.redirect(new URL("/", getAppBaseUrl(request)));
     setSessionCookie(redirect, {
       user,
       conductorAccessToken: accessToken,
-      conductorBaseUrl:
-        typeof payload.conductor_base_url === "string"
-          ? payload.conductor_base_url.replace(/\/+$/, "")
-          : conductorBaseUrl,
+      conductorBaseUrl: resolvedConductorBaseUrl,
     });
     clearOAuthStateCookie(redirect);
     return redirect;

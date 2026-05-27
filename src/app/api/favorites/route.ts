@@ -10,7 +10,7 @@ export async function GET() {
   if (!auth.ok) return auth.response;
 
   try {
-    const favoriteIds = await readFavoriteIds();
+    const favoriteIds = await readFavoriteIds(auth.session.user.id);
     return NextResponse.json({ ok: true, favoriteIds });
   } catch (error) {
     return NextResponse.json(
