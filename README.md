@@ -22,7 +22,11 @@ OPENAI_MODEL=gpt-4o-mini
 ```bash
 APP_URL=http://localhost:3000
 APP_TIME_ZONE=Asia/Shanghai
+ARXIV_DAILY_URL=https://arxiv.org/list/cs.RO/recent?skip=0&show=100
+ARXIV_AUTO_FETCH_ENABLED=1
 ARXIV_LIMIT=100
+ARXIV_RUN_HOUR=2
+ARXIV_RUN_MINUTE=0
 OPENAI_CONCURRENCY=3
 ARXIV_FULL_TEXT_MAX_CHARS=50000
 ARXIV_FULL_TEXT_TIMEOUT_MS=10000
@@ -63,6 +67,12 @@ npm run dev
 
 打开 `http://localhost:3000`，点击“立即分析”可手动触发。
 
+顶栏齿轮按钮可打开配置 popup，保存后立即写入当前应用状态：
+
+- arxiv daily 拉取链接
+- 每天自动拉取时间和自动拉取开关
+- Conductor 地址、key、daemon、workspace、app name、AI backend
+
 ## 定时任务
 
 应用提供 cron API：
@@ -88,13 +98,13 @@ Authorization: Bearer $CRON_SECRET
 npm run cron
 ```
 
-本地常驻 worker，每天 02:00 `APP_TIME_ZONE` 触发：
+本地常驻 worker 每 5 分钟请求一次 cron API，由服务端按配置 popup 中保存的开关和时间判断是否执行：
 
 ```bash
 npm run worker
 ```
 
-Vercel 部署时，`vercel.json` 已配置 `0 18 * * *`，对应北京时间每天 02:00。
+Vercel 部署时，`vercel.json` 已配置 `*/5 * * * *`。实际执行时间由配置 popup 中保存的本地时间决定，时区来自 `APP_TIME_ZONE`。
 
 ## 数据存储
 

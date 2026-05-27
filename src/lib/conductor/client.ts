@@ -5,44 +5,50 @@
  * Node process. The first call to `getClient()` opens a `/ws/app` WebSocket;
  * subsequent calls reuse it.
  *
- * TODO(account-system): credentials currently come from process-wide env
- * vars and the client is a process singleton. When the app gains a per-user
- * account system:
- *   - move baseUrl / token / daemonHost / workspacePath onto the user
- *     profile and let users configure them from a settings page (validate
- *     via `client.projects.bind()` on save);
- *   - change `getClient()` to `getClient(userId)` backed by an LRU cache so
- *     each user's Conductor session is isolated;
- *   - keep the env-var path as the fallback for the unauthenticated /
- *     local-dev case.
+ * Settings come from the app state written by the dashboard settings popup,
+ * with env vars as the local-dev fallback. If the app gains a per-user
+ * account system, change this to `getClient(userId)` backed by an LRU cache
+ * so each user's Conductor session is isolated.
  */
 import { promises as fs } from "node:fs";
 import { connect, type AppClient } from "@love-moon/app-sdk/server";
+import { requireConductorValue } from "@/lib/app-settings";
+import { readAppSettings } from "@/lib/arxiv/store";
 
 let cachedClient: AppClient | null = null;
 let cachedClientPromise: Promise<AppClient> | null = null;
+let cachedClientConfigKey: string | null = null;
+let cachedClientPromiseConfigKey: string | null = null;
 
-function readEnv(key: string): string {
-  const value = process.env[key];
-  if (!value) {
-    throw new Error(
-      `Missing env var ${key}. See .env.example for the full list of Conductor settings.`,
-    );
-  }
-  return value;
+function clientConfigKey(baseUrl: string, token: string) {
+  return `${baseUrl}\n${token}`;
+}
+
+export function resetConductorClient() {
+  cachedClient = null;
+  cachedClientPromise = null;
+  cachedClientConfigKey = null;
+  cachedClientPromiseConfigKey = null;
 }
 
 export async function getConductorClient(): Promise<AppClient> {
-  if (cachedClient) return cachedClient;
-  if (cachedClientPromise) return cachedClientPromise;
+  const settings = await readAppSettings();
+  const baseUrl = requireConductorValue(settings.conductor.baseUrl, "baseUrl");
+  const bearerToken = requireConductorValue(settings.conductor.token, "token");
+  const configKey = clientConfigKey(baseUrl, bearerToken);
+
+  if (cachedClient && cachedClientConfigKey === configKey) return cachedClient;
+  if (cachedClientPromise && cachedClientPromiseConfigKey === configKey) {
+    return cachedClientPromise;
+  }
 
   // Cache the *promise* so concurrent callers share one connect; clear the
   // cache on failure so the next caller retries from scratch instead of
   // re-receiving the same rejection forever.
   const promise = (async () => {
     const client = await connect({
-      baseUrl: readEnv("CONDUCTOR_BASE_URL"),
-      bearerToken: readEnv("CONDUCTOR_TOKEN"),
+      baseUrl,
+      bearerToken,
       onUnauthorized: () => {
         console.error(
           "[conductor] 401 from Conductor — token invalid or revoked?",
@@ -50,12 +56,15 @@ export async function getConductorClient(): Promise<AppClient> {
       },
     });
     cachedClient = client;
+    cachedClientConfigKey = configKey;
     return client;
   })();
   cachedClientPromise = promise;
+  cachedClientPromiseConfigKey = configKey;
   promise.catch(() => {
     if (cachedClientPromise === promise) {
       cachedClientPromise = null;
+      cachedClientPromiseConfigKey = null;
     }
   });
   return promise;
@@ -75,7 +84,11 @@ export async function getConductorClient(): Promise<AppClient> {
  * remote daemon will still 4xx and the operator can provision the path.
  */
 export async function bindArxivRadarProject() {
-  const workspacePath = readEnv("CONDUCTOR_WORKSPACE_PATH");
+  const settings = await readAppSettings();
+  const workspacePath = requireConductorValue(
+    settings.conductor.workspacePath,
+    "workspacePath",
+  );
 
   try {
     await fs.mkdir(workspacePath, { recursive: true });
@@ -92,8 +105,8 @@ export async function bindArxivRadarProject() {
 
   const client = await getConductorClient();
   return client.projects.bind({
-    name: process.env.CONDUCTOR_APP_NAME ?? "arxiv-radar",
-    daemonHost: readEnv("CONDUCTOR_DAEMON_HOST"),
+    name: settings.conductor.appName || "arxiv-radar",
+    daemonHost: requireConductorValue(settings.conductor.daemonHost, "daemonHost"),
     workspacePath,
   });
 }

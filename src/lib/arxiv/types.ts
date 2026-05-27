@@ -76,6 +76,27 @@ export interface PaperTaskBinding {
   createdAt: string;
 }
 
+export interface AppCronSettings {
+  enabled: boolean;
+  /** Local wall-clock time in HH:mm, interpreted in APP_TIME_ZONE. */
+  localTime: string;
+}
+
+export interface AppConductorSettings {
+  baseUrl: string;
+  token: string;
+  daemonHost: string;
+  workspacePath: string;
+  appName: string;
+  backendType: string;
+}
+
+export interface AppSettings {
+  arxivDailyUrl: string;
+  cron: AppCronSettings;
+  conductor: AppConductorSettings;
+}
+
 export interface ArxivState {
   version: 1;
   updatedAt: string;
@@ -83,6 +104,7 @@ export interface ArxivState {
   favoriteIds: string[];
   papers: AnalyzedPaper[];
   runs: AnalysisRun[];
+  settings: AppSettings;
   /**
    * Per-paper Conductor task binding. Created lazily by
    * `POST /api/conductor/bind` and reused for the lifetime of the paper.

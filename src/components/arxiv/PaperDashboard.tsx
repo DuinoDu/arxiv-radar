@@ -42,6 +42,7 @@ import {
 import { ManualAddButton } from "@/components/arxiv/ManualAddButton";
 import { RunAnalysisButton } from "@/components/arxiv/RunAnalysisButton";
 import { AuthButton } from "@/components/auth/AuthButton";
+import { SettingsPopup } from "@/components/arxiv/SettingsPopup";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { useFavorites } from "@/lib/arxiv/useFavorites";
 import type { PublicAuthUser } from "@/lib/auth/session";
@@ -1408,6 +1409,7 @@ export function PaperDashboard({
                 <ManualAddButton onPaperExists={focusExistingPaper} />
                 <RunAnalysisButton disabled={disableManualRun} />
               </div>
+              <SettingsPopup />
             </div>
           </div>
 

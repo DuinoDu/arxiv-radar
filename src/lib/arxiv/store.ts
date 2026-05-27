@@ -6,10 +6,12 @@ import {
 } from "@vercel/blob";
 import { promises as fs } from "fs";
 import path from "path";
+import { normalizeAppSettings } from "@/lib/app-settings";
 import {
   PAPER_TAGS,
   type AnalysisRun,
   type AnalyzedPaper,
+  type AppSettings,
   type ArxivState,
   type PaperTag,
   type PaperTagSource,
@@ -77,6 +79,7 @@ function createEmptyState(): ArxivState {
     favoriteIds: [],
     papers: [],
     runs: [],
+    settings: normalizeAppSettings(undefined),
     paperTasks: {},
   };
 }
@@ -117,6 +120,7 @@ function normalizeState(parsed: Partial<ArxivState>): ArxivState {
       : [],
     papers: Array.isArray(parsed.papers) ? parsed.papers : [],
     runs: Array.isArray(parsed.runs) ? parsed.runs : [],
+    settings: normalizeAppSettings(parsed.settings),
     paperTasks: normalizePaperTasks(parsed.paperTasks),
   };
 }
@@ -130,6 +134,7 @@ function prepareStateForWrite(state: ArxivState): ArxivState {
     favoriteIds: Array.from(new Set(state.favoriteIds)),
     papers: state.papers.slice(0, MAX_STORED_PAPERS),
     runs: state.runs.slice(0, MAX_RUNS),
+    settings: normalizeAppSettings(state.settings),
     paperTasks: state.paperTasks ?? {},
   };
 }
@@ -250,8 +255,24 @@ export async function readArxivState(): Promise<ArxivState> {
   return snapshot.state;
 }
 
+export async function readAppSettings(): Promise<AppSettings> {
+  const state = await readArxivState();
+  return state.settings;
+}
+
 export async function writeArxivState(state: ArxivState) {
   await mutateArxivState(() => state);
+}
+
+export async function updateAppSettings(
+  settings: AppSettings,
+  options: { resetPaperTasks?: boolean } = {},
+) {
+  await mutateArxivState((state) => ({
+    ...state,
+    settings,
+    paperTasks: options.resetPaperTasks ? {} : state.paperTasks,
+  }));
 }
 
 export async function upsertRun(run: AnalysisRun) {

@@ -24,7 +24,7 @@ import {
   killConductorTask,
   restartConductorTask,
 } from "@/lib/conductor/raw-fetch";
-import { clearPaperTaskBindingByTaskId } from "@/lib/arxiv/store";
+import { clearPaperTaskBindingByTaskId, readAppSettings } from "@/lib/arxiv/store";
 
 export const runtime = "nodejs";
 // SSE streams are long-lived; tell Next not to time them out.
@@ -142,18 +142,18 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
           ? body.strategy
           : "inplace";
       // Respect a per-restart override from the body, falling back to the
-      // env-configured default. Without this fallback, restarting a task
+      // settings-configured default. Without this fallback, restarting a task
       // would silently revert to whatever backend the task was originally
-      // created with — confusing if the user has since changed the env to
-      // a different model / variant.
+      // created with, even if the user changed the popup setting.
       const explicitBackend =
         typeof body?.backend_type === "string" && body.backend_type.trim()
           ? body.backend_type.trim()
           : typeof body?.backendType === "string" && body.backendType.trim()
             ? body.backendType.trim()
             : null;
-      const envBackend = process.env.CONDUCTOR_BACKEND_TYPE?.trim() || null;
-      const backendType = explicitBackend ?? envBackend ?? undefined;
+      const settings = await readAppSettings();
+      const configuredBackend = settings.conductor.backendType || null;
+      const backendType = explicitBackend ?? configuredBackend ?? undefined;
       const result = await restartConductorTask(taskId, {
         strategy,
         ...(backendType ? { backendType } : {}),

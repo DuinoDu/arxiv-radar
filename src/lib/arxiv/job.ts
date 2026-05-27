@@ -1,6 +1,6 @@
 import { analyzeArticles } from "./analyzer";
 import { ARXIV_RECENT_URL, fetchArticleMetadata, fetchRecentArticleIds } from "./fetcher";
-import { finishRun, readArxivState, upsertRun } from "./store";
+import { finishRun, readAppSettings, readArxivState, upsertRun } from "./store";
 import type {
   AnalysisRun,
   ArxivArticle,
@@ -66,10 +66,11 @@ function selectNewArticles(
 async function runArxivAnalysisInternal(
   options: RunArxivAnalysisOptions = {},
 ): Promise<RunArxivAnalysisResult> {
+  const settings = await readAppSettings();
   const limit = toLimit(options.limit);
   const sourceUrl = options.reanalyzeExisting
     ? EXISTING_PAPERS_SOURCE
-    : options.sourceUrl || ARXIV_RECENT_URL;
+    : options.sourceUrl || settings.arxivDailyUrl || ARXIV_RECENT_URL;
   let run = createInitialRun(sourceUrl);
 
   await upsertRun(run);
