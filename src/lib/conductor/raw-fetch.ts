@@ -8,27 +8,19 @@
  * Conductor's task-card UX (running → kill?, killed → restart?), so we
  * call those endpoints directly here.
  *
- * Auth: reuses the same Bearer token the SDK uses (CONDUCTOR_TOKEN env).
- * Base URL: same as the SDK's `CONDUCTOR_BASE_URL`. This means the BFF
- * trust boundary is unchanged — the token never leaves Node.
+ * Auth/base URL: reuses the same app settings the SDK client uses. This means
+ * the BFF trust boundary is unchanged — the token never leaves Node except
+ * when the user edits it in the settings popup.
  */
+import { requireConductorValue } from "@/lib/app-settings";
+import { readAppSettings } from "@/lib/arxiv/store";
 
-function readEnv(key: string): string {
-  const value = process.env[key];
-  if (!value) {
-    throw new Error(
-      `Missing env var ${key}. See .env.example for the full list of Conductor settings.`,
-    );
-  }
-  return value;
-}
-
-function getBaseUrl(): string {
-  return readEnv("CONDUCTOR_BASE_URL").replace(/\/+$/, "");
-}
-
-function getAuthHeader(): string {
-  return `Bearer ${readEnv("CONDUCTOR_TOKEN")}`;
+async function getRawConductorConfig() {
+  const settings = await readAppSettings();
+  return {
+    baseUrl: requireConductorValue(settings.conductor.baseUrl, "baseUrl").replace(/\/+$/, ""),
+    authHeader: `Bearer ${requireConductorValue(settings.conductor.token, "token")}`,
+  };
 }
 
 export interface ConductorRawError {
@@ -56,13 +48,14 @@ function makeError(status: number, body: unknown, fallback: string): ConductorRa
  * (response status: 'killing' typically, transitions to 'killed').
  */
 export async function killConductorTask(taskId: string): Promise<unknown> {
-  const url = `${getBaseUrl()}/api/tasks/${encodeURIComponent(taskId)}`;
+  const config = await getRawConductorConfig();
+  const url = `${config.baseUrl}/api/tasks/${encodeURIComponent(taskId)}`;
   const response = await fetch(url, {
     method: "PATCH",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
-      Authorization: getAuthHeader(),
+      Authorization: config.authHeader,
     },
     body: JSON.stringify({ status: "killed" }),
   });
@@ -86,7 +79,8 @@ export async function restartConductorTask(
   taskId: string,
   options: { strategy?: "inplace" | "fresh"; backendType?: string } = {},
 ): Promise<unknown> {
-  const url = `${getBaseUrl()}/api/tasks/${encodeURIComponent(taskId)}/restart`;
+  const config = await getRawConductorConfig();
+  const url = `${config.baseUrl}/api/tasks/${encodeURIComponent(taskId)}/restart`;
   const body: Record<string, unknown> = {
     strategy: options.strategy ?? "inplace",
   };
@@ -96,7 +90,7 @@ export async function restartConductorTask(
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
-      Authorization: getAuthHeader(),
+      Authorization: config.authHeader,
     },
     body: JSON.stringify(body),
   });

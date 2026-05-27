@@ -41,6 +41,7 @@ import {
 } from "@/lib/arxiv/paper-list";
 import { ManualAddButton } from "@/components/arxiv/ManualAddButton";
 import { RunAnalysisButton } from "@/components/arxiv/RunAnalysisButton";
+import { SettingsPopup } from "@/components/arxiv/SettingsPopup";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { useFavorites } from "@/lib/arxiv/useFavorites";
 
@@ -1394,10 +1395,13 @@ export function PaperDashboard({
               ) : null}
             </div>
 
-            <div className="hidden items-start gap-3 md:flex">
-              <ThemeToggle />
-              <ManualAddButton onPaperExists={focusExistingPaper} />
-              <RunAnalysisButton disabled={disableManualRun} />
+            <div className="flex items-start gap-2 md:gap-3">
+              <div className="hidden items-start gap-3 md:flex">
+                <ThemeToggle />
+                <ManualAddButton onPaperExists={focusExistingPaper} />
+                <RunAnalysisButton disabled={disableManualRun} />
+              </div>
+              <SettingsPopup />
             </div>
           </div>
 

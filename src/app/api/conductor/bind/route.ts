@@ -43,6 +43,7 @@ import {
 } from "@/lib/conductor/client";
 import {
   getPaperTaskBinding,
+  readAppSettings,
   readArxivState,
   setPaperTaskBinding,
 } from "@/lib/arxiv/store";
@@ -129,14 +130,15 @@ async function bindWithDedup(
   if (ongoing) return ongoing;
 
   const promise = (async (): Promise<BindResult> => {
+    const settings = await readAppSettings();
     const project = await bindArxivRadarProject();
     const client = await getConductorClient();
-    // Backend selection: env-configured `CONDUCTOR_BACKEND_TYPE` maps to a
-    // key in the daemon's `allow_cli_list`. Empty / missing → let Conductor
+    // Backend selection: settings-configured backend type maps to a key in
+    // the daemon's `allow_cli_list`. Empty / missing → let Conductor
     // pick the daemon default. Trimmed so accidental whitespace in .env
     // doesn't produce a bogus backend name like "  codex-fast " that the
     // daemon will reject.
-    const backendType = process.env.CONDUCTOR_BACKEND_TYPE?.trim() || undefined;
+    const backendType = settings.conductor.backendType || undefined;
     const task = await client.tasks.create({
       projectId: project.id,
       title: paper.title.slice(0, 200),

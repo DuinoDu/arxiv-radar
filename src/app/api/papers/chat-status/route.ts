@@ -16,10 +16,6 @@ type BoundPaperTask = {
   taskId: string;
 };
 
-function conductorReadConfigured() {
-  return Boolean(process.env.CONDUCTOR_BASE_URL && process.env.CONDUCTOR_TOKEN);
-}
-
 function normalizeStatus(status: unknown) {
   return typeof status === "string" ? status.toLowerCase() : "";
 }
@@ -39,6 +35,9 @@ function isKilledChatStatus(status: string) {
 
 export async function GET() {
   const state = await readArxivState();
+  const conductorConfigured = Boolean(
+    state.settings.conductor.baseUrl && state.settings.conductor.token,
+  );
   const visiblePaperIds = new Set(
     state.papers.filter((paper) => !paper.removed).map((paper) => paper.id),
   );
@@ -50,7 +49,7 @@ export async function GET() {
       taskId: binding.taskId,
     }));
 
-  if (paperTasks.length === 0 || !conductorReadConfigured()) {
+  if (paperTasks.length === 0 || !conductorConfigured) {
     return NextResponse.json({
       runningPaperIds: [],
       killedPaperIds: [],
