@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { addFavoriteId, removeFavoriteId } from "@/lib/arxiv/store";
+import { requireAuthSession } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,6 +18,9 @@ function decodeRouteId(value: string) {
 }
 
 export async function POST(_request: Request, context: RouteContext) {
+  const auth = await requireAuthSession();
+  if (!auth.ok) return auth.response;
+
   const { id } = await context.params;
   const paperId = decodeRouteId(id);
 
@@ -36,6 +40,9 @@ export async function POST(_request: Request, context: RouteContext) {
 }
 
 export async function DELETE(_request: Request, context: RouteContext) {
+  const auth = await requireAuthSession();
+  if (!auth.ok) return auth.response;
+
   const { id } = await context.params;
   const paperId = decodeRouteId(id);
 

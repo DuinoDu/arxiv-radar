@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { markPaperRemoved } from "@/lib/arxiv/store";
+import { requireAuthSession } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,6 +18,9 @@ function decodeRouteId(value: string) {
 }
 
 export async function POST(_request: NextRequest, context: RouteContext) {
+  const auth = await requireAuthSession();
+  if (!auth.ok) return auth.response;
+
   const { id } = await context.params;
   const paperId = decodeRouteId(id);
 

@@ -1,4 +1,5 @@
 import { PaperDashboard } from "@/components/arxiv/PaperDashboard";
+import { LoginRequired } from "@/components/auth/LoginRequired";
 import { parseTagFilter } from "@/lib/arxiv/filters";
 import { getInitialPaperListData, normalizePaperDateKey } from "@/lib/arxiv/paper-list";
 import { readArxivState } from "@/lib/arxiv/store";
@@ -17,8 +18,12 @@ export default async function Home({ searchParams }: { searchParams?: Promise<Se
   const params = await searchParams;
   const initialFilter = parseTagFilter(params?.tag);
   const initialDate = normalizePaperDateKey(params?.date);
-  const state = await readArxivState();
   const authUser = await getCurrentAuthUser();
+  if (!authUser) {
+    return <LoginRequired />;
+  }
+
+  const state = await readArxivState();
   const initialData = getInitialPaperListData(state, initialFilter, initialDate, TIME_ZONE);
 
   return (

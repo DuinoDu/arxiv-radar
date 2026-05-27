@@ -7,6 +7,7 @@ import {
   normalizePageOffset,
 } from "@/lib/arxiv/paper-list";
 import { readArxivState } from "@/lib/arxiv/store";
+import { requireAuthSession } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,6 +27,9 @@ function parsePaperIds(url: URL): string[] | undefined {
 }
 
 export async function GET(request: NextRequest) {
+  const auth = await requireAuthSession();
+  if (!auth.ok) return auth.response;
+
   try {
     const url = new URL(request.url);
     const filter = parseTagFilter(url.searchParams.get("tag"));

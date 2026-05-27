@@ -3,6 +3,7 @@ import { analyzeArticle } from "@/lib/arxiv/analyzer";
 import { fetchArticleMetadata, normalizeArxivId } from "@/lib/arxiv/fetcher";
 import { addManualPaper, readArxivState } from "@/lib/arxiv/store";
 import { PAPER_TAGS, type AnalyzedPaper, type PaperTag } from "@/lib/arxiv/types";
+import { requireAuthSession } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -57,6 +58,9 @@ function mergeTags(analyzed: AnalyzedPaper, manualTags: PaperTag[]): AnalyzedPap
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireAuthSession();
+  if (!auth.ok) return auth.response;
+
   let payload: ManualPaperBody;
 
   try {

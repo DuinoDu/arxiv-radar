@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { updatePaperTags } from "@/lib/arxiv/store";
 import { PAPER_TAGS, type PaperTag } from "@/lib/arxiv/types";
+import { requireAuthSession } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,6 +40,9 @@ function parseTags(rawTags: unknown): PaperTag[] | null {
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
+  const auth = await requireAuthSession();
+  if (!auth.ok) return auth.response;
+
   const { id } = await context.params;
   const paperId = decodeRouteId(id);
 

@@ -6,6 +6,7 @@ import {
 } from "@/lib/app-settings";
 import { readAppSettings, updateAppSettings } from "@/lib/arxiv/store";
 import { resetConductorClient } from "@/lib/conductor/client";
+import { requireAuthSession } from "@/lib/auth/guard";
 import type { AppSettings } from "@/lib/arxiv/types";
 
 export const runtime = "nodejs";
@@ -21,11 +22,17 @@ function conductorProjectKey(settings: AppSettings) {
 }
 
 export async function GET() {
+  const auth = await requireAuthSession();
+  if (!auth.ok) return auth.response;
+
   const settings = await readAppSettings();
   return NextResponse.json(toPublicAppSettings(settings));
 }
 
 export async function PUT(request: Request) {
+  const auth = await requireAuthSession();
+  if (!auth.ok) return auth.response;
+
   let body: unknown;
   try {
     body = await request.json();

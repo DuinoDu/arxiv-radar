@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { PaperWorkspace } from "@/components/arxiv/PaperWorkspace";
+import { LoginRequired } from "@/components/auth/LoginRequired";
 import { readArxivState } from "@/lib/arxiv/store";
 import { getCurrentAuthUser } from "@/lib/auth/session";
 
@@ -37,7 +38,12 @@ export default async function PaperChatPage({ params, searchParams }: PageProps)
   const query = await searchParams;
   const paperId = decodeRouteId(id);
   const view = parseView(query?.view);
-  const [state, authUser] = await Promise.all([readArxivState(), getCurrentAuthUser()]);
+  const authUser = await getCurrentAuthUser();
+  if (!authUser) {
+    return <LoginRequired />;
+  }
+
+  const state = await readArxivState();
   const paper = state.papers.find((candidate) => candidate.id === paperId);
 
   if (!paper) {
@@ -46,7 +52,7 @@ export default async function PaperChatPage({ params, searchParams }: PageProps)
 
   return (
     <main className="min-h-[100dvh] bg-zinc-50 text-zinc-950 dark:bg-zinc-950 dark:text-white">
-      <PaperWorkspace view={view} paper={paper} authenticated={Boolean(authUser)} />
+      <PaperWorkspace view={view} paper={paper} authenticated />
     </main>
   );
 }
