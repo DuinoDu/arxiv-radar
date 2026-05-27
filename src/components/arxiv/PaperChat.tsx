@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, FileText, Globe2, MessageSquare } from "lucide-react";
+import { ArrowLeft, FileText, Globe2, LogIn, MessageSquare } from "lucide-react";
 import {
   ChatProvider,
   MessageInput,
@@ -99,7 +99,7 @@ function ChatBody({
   );
 }
 
-export function PaperChat({ paper }: { paper: AnalyzedPaper }) {
+export function PaperChat({ paper, authenticated }: { paper: AnalyzedPaper; authenticated: boolean }) {
   const [taskId, setTaskId] = useState<string | null>(null);
   const [bindError, setBindError] = useState<string | null>(null);
   // Monotonic counter that the bind effect keys on. Bumped by both auto
@@ -119,6 +119,10 @@ export function PaperChat({ paper }: { paper: AnalyzedPaper }) {
   const [restarting, setRestarting] = useState(false);
 
   useEffect(() => {
+    if (!authenticated) {
+      return;
+    }
+
     const controller = new AbortController();
 
     async function bind() {
@@ -151,7 +155,7 @@ export function PaperChat({ paper }: { paper: AnalyzedPaper }) {
     void bind();
 
     return () => controller.abort();
-  }, [paper.id, bindAttempt]);
+  }, [authenticated, paper.id, bindAttempt]);
 
   // Fetch + poll the task lifecycle status from our BFF. The SDK's
   // subscribe stream gives us per-reply runtime events but not the
@@ -183,17 +187,20 @@ export function PaperChat({ paper }: { paper: AnalyzedPaper }) {
   );
 
   useEffect(() => {
-    if (!taskId) return;
+    if (!authenticated || !taskId) return;
     const controller = new AbortController();
-    void fetchTaskStatus(taskId, controller.signal);
+    const initialTimeoutId = window.setTimeout(() => {
+      void fetchTaskStatus(taskId, controller.signal);
+    }, 0);
     const intervalId = window.setInterval(() => {
       void fetchTaskStatus(taskId, controller.signal);
     }, TASK_STATUS_POLL_MS);
     return () => {
       controller.abort();
+      window.clearTimeout(initialTimeoutId);
       window.clearInterval(intervalId);
     };
-  }, [taskId, bindAttempt, fetchTaskStatus]);
+  }, [authenticated, taskId, bindAttempt, fetchTaskStatus]);
 
   const handleKillTask = useCallback(async () => {
     if (!taskId || killing) return;
@@ -380,7 +387,20 @@ export function PaperChat({ paper }: { paper: AnalyzedPaper }) {
       </div>
 
       <div className="relative min-h-0 flex-1">
-        {bindError ? (
+        {!authenticated ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 text-center">
+            <p className="text-sm text-zinc-600 dark:text-zinc-300">
+              登录后开始论文对话
+            </p>
+            <a
+              href="/api/auth/login"
+              className="inline-flex h-10 items-center gap-2 rounded-md bg-zinc-950 px-4 text-sm font-medium text-white transition hover:bg-zinc-800 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200"
+            >
+              <LogIn className="h-4 w-4" aria-hidden="true" />
+              使用 Conductor 登录
+            </a>
+          </div>
+        ) : bindError ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
             <p className="text-sm text-red-700 dark:text-red-300">
               聊天初始化失败

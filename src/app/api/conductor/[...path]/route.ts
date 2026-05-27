@@ -24,7 +24,8 @@ import {
   killConductorTask,
   restartConductorTask,
 } from "@/lib/conductor/raw-fetch";
-import { clearPaperTaskBindingByTaskId, readAppSettings } from "@/lib/arxiv/store";
+import { clearUserPaperTaskBindingByTaskId, readAppSettings } from "@/lib/arxiv/store";
+import { getCurrentAuthSession, type AuthSession } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
 // SSE streams are long-lived; tell Next not to time them out.
@@ -34,14 +35,24 @@ interface RouteContext {
   params: Promise<{ path: string[] }>;
 }
 
+function authenticationRequired() {
+  return NextResponse.json(
+    { error: "请先使用 Conductor 登录", code: "authentication_required" },
+    { status: 401 },
+  );
+}
+
 export async function GET(req: NextRequest, ctx: RouteContext) {
+  const session = await getCurrentAuthSession();
+  if (!session) return authenticationRequired();
+
   const segments = (await ctx.params).path ?? [];
   if (segments[0] !== "tasks" || !segments[1]) return notFound();
   const taskId = decodeURIComponent(segments[1]);
   const op = segments[2];
 
   try {
-    const client = await getConductorClient();
+    const client = await getConductorClient(session);
     // GET /tasks/:id → task object (used by our task status badge).
     // The catch-all already handles /tasks/:id/messages and /tasks/:id/events
     // below; this branch covers the "no third segment" case.
@@ -65,23 +76,26 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
     }
 
     if (op === "events") {
-      return startEventStream(req, taskId);
+      return startEventStream(req, taskId, session);
     }
 
     return notFound();
   } catch (err) {
-    return await errorResponse(err, taskId);
+    return await errorResponse(err, taskId, session.user.id);
   }
 }
 
 export async function POST(req: NextRequest, ctx: RouteContext) {
+  const session = await getCurrentAuthSession();
+  if (!session) return authenticationRequired();
+
   const segments = (await ctx.params).path ?? [];
   if (segments[0] !== "tasks" || !segments[1]) return notFound();
   const taskId = decodeURIComponent(segments[1]);
   const op = segments[2];
 
   try {
-    const client = await getConductorClient();
+    const client = await getConductorClient(session);
     const body = await req.json().catch(() => ({}));
 
     if (op === "messages") {
@@ -133,7 +147,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     // call Conductor REST directly. Used by the chat top bar's task-card-
     // style controls (running → kill?, killed → restart?).
     if (op === "kill") {
-      const task = await killConductorTask(taskId);
+      const task = await killConductorTask(taskId, session);
       return NextResponse.json(task);
     }
     if (op === "restart") {
@@ -157,13 +171,13 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       const result = await restartConductorTask(taskId, {
         strategy,
         ...(backendType ? { backendType } : {}),
-      });
+      }, session);
       return NextResponse.json(result);
     }
 
     return notFound();
   } catch (err) {
-    return await errorResponse(err, taskId);
+    return await errorResponse(err, taskId, session.user.id);
   }
 }
 
@@ -175,8 +189,9 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 async function startEventStream(
   req: NextRequest,
   taskId: string,
+  session: AuthSession,
 ): Promise<Response> {
-  const client = await getConductorClient();
+  const client = await getConductorClient(session);
   const encoder = new TextEncoder();
   const abortController = new AbortController();
   const onRequestAbort = (): void => abortController.abort();
@@ -242,7 +257,7 @@ async function startEventStream(
           // sendMessage) may race the eviction. We must commit the eviction
           // before letting the client move on.
           try {
-            await clearPaperTaskBindingByTaskId(taskId);
+            await clearUserPaperTaskBindingByTaskId(session.user.id, taskId);
           } catch (cleanupErr) {
             console.error(
               "[conductor] failed to clear stale paper-task binding (sse)",
@@ -353,7 +368,7 @@ function notFound() {
 /**
  * Build the JSON error envelope the SDK's REST adapter expects. When the
  * upstream Conductor error is `task_not_found`, also evict the local
- * `paperTasks` binding for this taskId so the next bind round creates a
+ * current user's `paperTasksByUser` binding for this taskId so the next bind round creates a
  * fresh task instead of looping on the dead one.
  *
  * Eviction is **awaited**, not fire-and-forget: the browser's chat widget
@@ -365,11 +380,11 @@ function notFound() {
  * Cleanup failures are logged but don't poison the response — we still
  * want the original Conductor error to reach the client.
  */
-async function errorResponse(err: unknown, taskId?: string) {
+async function errorResponse(err: unknown, taskId?: string, userId?: string) {
   if (isConductorAppError(err)) {
-    if (taskId && err.code === "task_not_found") {
+    if (taskId && userId && err.code === "task_not_found") {
       try {
-        await clearPaperTaskBindingByTaskId(taskId);
+        await clearUserPaperTaskBindingByTaskId(userId, taskId);
       } catch (cleanupErr) {
         console.error(
           "[conductor] failed to clear stale paper-task binding",
@@ -384,9 +399,9 @@ async function errorResponse(err: unknown, taskId?: string) {
   }
   // Raw Conductor REST errors (from kill/restart bypass paths).
   if (isConductorRawError(err)) {
-    if (taskId && err.status === 404) {
+    if (taskId && userId && err.status === 404) {
       try {
-        await clearPaperTaskBindingByTaskId(taskId);
+        await clearUserPaperTaskBindingByTaskId(userId, taskId);
       } catch (cleanupErr) {
         console.error(
           "[conductor] failed to clear stale paper-task binding (raw)",

@@ -14,8 +14,16 @@
  */
 import { requireConductorValue } from "@/lib/app-settings";
 import { readAppSettings } from "@/lib/arxiv/store";
+import type { AuthSession } from "@/lib/auth/session";
 
-async function getRawConductorConfig() {
+async function getRawConductorConfig(session?: AuthSession) {
+  if (session) {
+    return {
+      baseUrl: requireConductorValue(session.conductorBaseUrl, "baseUrl").replace(/\/+$/, ""),
+      authHeader: `Bearer ${requireConductorValue(session.conductorAccessToken, "token")}`,
+    };
+  }
+
   const settings = await readAppSettings();
   return {
     baseUrl: requireConductorValue(settings.conductor.baseUrl, "baseUrl").replace(/\/+$/, ""),
@@ -47,8 +55,8 @@ function makeError(status: number, body: unknown, fallback: string): ConductorRa
  * Conductor's daemon picks up the change and starts the kill sequence
  * (response status: 'killing' typically, transitions to 'killed').
  */
-export async function killConductorTask(taskId: string): Promise<unknown> {
-  const config = await getRawConductorConfig();
+export async function killConductorTask(taskId: string, session?: AuthSession): Promise<unknown> {
+  const config = await getRawConductorConfig(session);
   const url = `${config.baseUrl}/api/tasks/${encodeURIComponent(taskId)}`;
   const response = await fetch(url, {
     method: "PATCH",
@@ -78,8 +86,9 @@ export async function killConductorTask(taskId: string): Promise<unknown> {
 export async function restartConductorTask(
   taskId: string,
   options: { strategy?: "inplace" | "fresh"; backendType?: string } = {},
+  session?: AuthSession,
 ): Promise<unknown> {
-  const config = await getRawConductorConfig();
+  const config = await getRawConductorConfig(session);
   const url = `${config.baseUrl}/api/tasks/${encodeURIComponent(taskId)}/restart`;
   const body: Record<string, unknown> = {
     strategy: options.strategy ?? "inplace",

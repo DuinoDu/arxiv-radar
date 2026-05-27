@@ -16,6 +16,7 @@ export interface AuthUser {
 }
 
 export interface AuthSession {
+  sessionId: string;
   user: AuthUser;
   conductorAccessToken: string;
   conductorBaseUrl: string;
@@ -93,7 +94,13 @@ function decryptSession(value: string): AuthSession | null {
       return null;
     }
     if (Date.parse(parsed.expiresAt) <= Date.now()) return null;
-    return parsed as AuthSession;
+    return {
+      ...(parsed as Omit<AuthSession, "sessionId">),
+      sessionId:
+        typeof parsed.sessionId === "string" && parsed.sessionId
+          ? parsed.sessionId
+          : createHash("sha256").update(value).digest("base64url"),
+    };
   } catch {
     return null;
   }
@@ -118,11 +125,18 @@ export function readOAuthStateCookie(request: NextRequest) {
   return request.cookies.get(AUTH_STATE_COOKIE)?.value ?? null;
 }
 
-export function setSessionCookie(response: NextResponse, input: Omit<AuthSession, "expiresAt">) {
+export function setSessionCookie(
+  response: NextResponse,
+  input: Omit<AuthSession, "expiresAt" | "sessionId">,
+) {
   const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000).toISOString();
   response.cookies.set(
     AUTH_SESSION_COOKIE,
-    encryptSession({ ...input, expiresAt }),
+    encryptSession({
+      ...input,
+      sessionId: randomBytes(16).toString("base64url"),
+      expiresAt,
+    }),
     cookieOptions(SESSION_MAX_AGE_SECONDS),
   );
 }

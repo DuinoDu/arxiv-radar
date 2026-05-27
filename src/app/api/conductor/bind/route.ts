@@ -9,7 +9,7 @@
  *   2. creates a Conductor task scoped to the paper, seeded with a short
  *      initial message pointing at the arXiv HTML so the AI's harness can
  *      fetch the paper text on demand,
- *   3. persists the resulting `{ paperId → taskId }` mapping into our
+ *   3. persists the resulting `{ userId → paperId → taskId }` mapping into our
  *      shared state file (and Vercel Blob, when configured).
  *
  * On subsequent calls the persisted mapping is returned directly — no
@@ -25,12 +25,12 @@
  * Caveat: this dedup is **single-process**. On Vercel (or any autoscaled
  * serverless deploy) two concurrent requests can land on different Node
  * instances and both will pass the recheck; both will create a Conductor
- * task, and Blob's OCC retry will let the *later* `setPaperTaskBinding`
+ * task, and Blob's OCC retry will let the *later* `setUserPaperTaskBinding`
  * win (the updater blindly overwrites). The winner's task is then
  * orphaned on Conductor, since the persisted mapping points at the loser
- * (in temporal-write order). For this app's solo-user scale that's
- * acceptable; if it ever matters, replace this section with: stamp a
- * `pending` sentinel via `setPaperTaskBinding` *before* `tasks.create`,
+ * (in temporal-write order). If it becomes material, replace this section
+ * with: stamp a
+ * `pending` sentinel via `setUserPaperTaskBinding` *before* `tasks.create`,
  * using ifAbsent / ifMatch semantics, so the second writer detects the
  * conflict, deletes its own just-created task, and refetches the winner's
  * taskId.
@@ -42,11 +42,12 @@ import {
   getConductorClient,
 } from "@/lib/conductor/client";
 import {
-  getPaperTaskBinding,
+  getUserPaperTaskBinding,
   readAppSettings,
   readArxivState,
-  setPaperTaskBinding,
+  setUserPaperTaskBinding,
 } from "@/lib/arxiv/store";
+import { getCurrentAuthSession, type AuthSession } from "@/lib/auth/session";
 import type { AnalyzedPaper } from "@/lib/arxiv/types";
 
 export const runtime = "nodejs";
@@ -68,7 +69,19 @@ interface BindResult {
 // concurrency surface we need to coordinate.
 const inflightBinds = new Map<string, Promise<BindResult>>();
 
+function authenticationRequired() {
+  return NextResponse.json(
+    { error: "请先使用 Conductor 登录", code: "authentication_required" },
+    { status: 401 },
+  );
+}
+
 export async function POST(request: Request) {
+  const session = await getCurrentAuthSession();
+  if (!session) {
+    return authenticationRequired();
+  }
+
   let body: BindRequestBody;
   try {
     body = (await request.json()) as BindRequestBody;
@@ -96,7 +109,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const existing = state.paperTasks?.[paperId];
+    const existing = state.paperTasksByUser?.[session.user.id]?.[paperId];
     if (existing) {
       return NextResponse.json({
         taskId: existing.taskId,
@@ -104,7 +117,7 @@ export async function POST(request: Request) {
       });
     }
 
-    const result = await bindWithDedup(paperId, paper);
+    const result = await bindWithDedup(session, paperId, paper);
     return NextResponse.json(result);
   } catch (err) {
     return errorResponse(err);
@@ -112,27 +125,29 @@ export async function POST(request: Request) {
 }
 
 async function bindWithDedup(
+  session: AuthSession,
   paperId: string,
   paper: AnalyzedPaper,
 ): Promise<BindResult> {
   // Second-chance read: another in-flight bind may have committed between
   // the outer state read in `POST` and this point. Intentionally a fresh
-  // `readArxivState()` round-trip via `getPaperTaskBinding`, not the
+  // `readArxivState()` round-trip via `getUserPaperTaskBinding`, not the
   // cached outer state — that's what makes this loop closeable on the
   // cooperating single-process path. Cheap; the second read covers the
   // read-then-create window without holding a lock across Conductor IO.
-  const recheck = await getPaperTaskBinding(paperId);
+  const recheck = await getUserPaperTaskBinding(session.user.id, paperId);
   if (recheck) {
     return { taskId: recheck.taskId, projectId: recheck.projectId };
   }
 
-  const ongoing = inflightBinds.get(paperId);
+  const inflightKey = `${session.user.id}\n${paperId}`;
+  const ongoing = inflightBinds.get(inflightKey);
   if (ongoing) return ongoing;
 
   const promise = (async (): Promise<BindResult> => {
     const settings = await readAppSettings();
-    const project = await bindArxivRadarProject();
-    const client = await getConductorClient();
+    const project = await bindArxivRadarProject(session);
+    const client = await getConductorClient(session);
     // Backend selection: settings-configured backend type maps to a key in
     // the daemon's `allow_cli_list`. Empty / missing → let Conductor
     // pick the daemon default. Trimmed so accidental whitespace in .env
@@ -146,7 +161,7 @@ async function bindWithDedup(
       ...(backendType ? { backendType } : {}),
     });
 
-    await setPaperTaskBinding(paperId, {
+    await setUserPaperTaskBinding(session.user.id, paperId, {
       taskId: task.id,
       projectId: project.id,
       createdAt: new Date().toISOString(),
@@ -154,12 +169,12 @@ async function bindWithDedup(
     return { taskId: task.id, projectId: project.id };
   })();
 
-  inflightBinds.set(paperId, promise);
+  inflightBinds.set(inflightKey, promise);
   try {
     return await promise;
   } finally {
-    if (inflightBinds.get(paperId) === promise) {
-      inflightBinds.delete(paperId);
+    if (inflightBinds.get(inflightKey) === promise) {
+      inflightBinds.delete(inflightKey);
     }
   }
 }

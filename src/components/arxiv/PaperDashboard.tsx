@@ -1172,13 +1172,20 @@ export function PaperDashboard({
   }, [latestPaperDate, loadPaperPage, summary.dateBuckets]);
 
   useEffect(() => {
-    if (summary.totalPapers === 0) {
-      setRunningChatPaperIds(new Set());
-      setKilledChatPaperIds(new Set());
-      return;
-    }
-
     let cancelled = false;
+
+    if (summary.totalPapers === 0) {
+      const timeoutId = window.setTimeout(() => {
+        if (!cancelled) {
+          setRunningChatPaperIds(new Set());
+          setKilledChatPaperIds(new Set());
+        }
+      }, 0);
+      return () => {
+        cancelled = true;
+        window.clearTimeout(timeoutId);
+      };
+    }
 
     async function refreshChatStatus() {
       try {
@@ -1233,16 +1240,18 @@ export function PaperDashboard({
   }, [summary.totalPapers]);
 
   useEffect(() => {
-    if (activeFilter === "favorites") {
+    if (
+      activeFilter !== "favorites" &&
+      activeFilter !== "running_chat" &&
+      activeFilter !== "killed_chat"
+    ) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
       void loadPaperPage(activeFilter, { append: false, offset: 0 });
-      return;
-    }
-
-    if (activeFilter !== "running_chat" && activeFilter !== "killed_chat") {
-      return;
-    }
-
-    void loadPaperPage(activeFilter, { append: false, offset: 0 });
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
   }, [activeFilter, favorites, killedChatPaperIds, loadPaperPage, runningChatPaperIds]);
 
   useEffect(() => {

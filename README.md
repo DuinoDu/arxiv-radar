@@ -46,7 +46,18 @@ ARXIV_AUTH_SECRET=...
 ```
 
 `CONDUCTOR_SSO_CLIENT_SECRET` 必须与 Conductor 侧注册的 client secret 一致；
-`ARXIV_AUTH_SECRET` 用于加密 arxiv-radar 自己的 HttpOnly session cookie。
+`ARXIV_AUTH_SECRET` 用于加密 arxiv-radar 自己的 HttpOnly session cookie。登录完成后，
+聊天 BFF 会使用该用户换取的 Conductor token；每位用户的论文聊天 task 独立保存，
+不会复用其他用户的任务。
+
+创建 chat task 仍需配置共享的运行位置：
+
+```bash
+CONDUCTOR_DAEMON_HOST=...
+CONDUCTOR_WORKSPACE_PATH=...
+CONDUCTOR_APP_NAME=arxiv-radar
+CONDUCTOR_BACKEND_TYPE=
+```
 
 部署到 Vercel 时建议启用 Vercel Blob 持久化：
 
@@ -71,7 +82,7 @@ npm run dev
 
 - arxiv daily 拉取链接
 - 每天自动拉取时间和自动拉取开关
-- Conductor 地址、key、daemon、workspace、app name、AI backend
+- Conductor daemon、workspace、app name、AI backend
 
 ## 定时任务
 

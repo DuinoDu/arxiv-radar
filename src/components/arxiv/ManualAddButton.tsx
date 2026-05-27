@@ -18,16 +18,11 @@ export function ManualAddButton({
   const router = useRouter();
   const { addFavorite } = useFavorites();
   const [open, setOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
   const [input, setInput] = useState("");
   const [tags, setTags] = useState<Set<PaperTag>>(new Set());
   const [state, setState] = useState<SubmitState>("idle");
   const [message, setMessage] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   useEffect(() => {
     if (!open) {
@@ -139,7 +134,7 @@ export function ManualAddButton({
         <Plus className="h-4 w-4" aria-hidden="true" />
       </button>
 
-      {open && mounted
+      {open && typeof document !== "undefined"
         ? createPortal(
             <div
               role="dialog"

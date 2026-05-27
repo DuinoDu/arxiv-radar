@@ -81,6 +81,7 @@ function createEmptyState(): ArxivState {
     runs: [],
     settings: normalizeAppSettings(undefined),
     paperTasks: {},
+    paperTasksByUser: {},
   };
 }
 
@@ -108,6 +109,21 @@ function normalizePaperTasks(value: unknown): Record<string, PaperTaskBinding> {
   return result;
 }
 
+function normalizePaperTasksByUser(
+  value: unknown,
+): Record<string, Record<string, PaperTaskBinding>> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  const result: Record<string, Record<string, PaperTaskBinding>> = {};
+  for (const [userId, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (!userId || !raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    result[userId] = normalizePaperTasks(raw);
+  }
+  return result;
+}
+
 function normalizeState(parsed: Partial<ArxivState>): ArxivState {
   return {
     version: STATE_VERSION,
@@ -122,6 +138,7 @@ function normalizeState(parsed: Partial<ArxivState>): ArxivState {
     runs: Array.isArray(parsed.runs) ? parsed.runs : [],
     settings: normalizeAppSettings(parsed.settings),
     paperTasks: normalizePaperTasks(parsed.paperTasks),
+    paperTasksByUser: normalizePaperTasksByUser(parsed.paperTasksByUser),
   };
 }
 
@@ -136,6 +153,7 @@ function prepareStateForWrite(state: ArxivState): ArxivState {
     runs: state.runs.slice(0, MAX_RUNS),
     settings: normalizeAppSettings(state.settings),
     paperTasks: state.paperTasks ?? {},
+    paperTasksByUser: state.paperTasksByUser ?? {},
   };
 }
 
@@ -272,6 +290,7 @@ export async function updateAppSettings(
     ...state,
     settings,
     paperTasks: options.resetPaperTasks ? {} : state.paperTasks,
+    paperTasksByUser: options.resetPaperTasks ? {} : state.paperTasksByUser,
   }));
 }
 
@@ -424,6 +443,31 @@ export async function setPaperTaskBinding(
   }));
 }
 
+export async function getUserPaperTaskBinding(
+  userId: string,
+  paperId: string,
+): Promise<PaperTaskBinding | undefined> {
+  const state = await readArxivState();
+  return state.paperTasksByUser?.[userId]?.[paperId];
+}
+
+export async function setUserPaperTaskBinding(
+  userId: string,
+  paperId: string,
+  binding: PaperTaskBinding,
+) {
+  await mutateArxivState((state) => ({
+    ...state,
+    paperTasksByUser: {
+      ...(state.paperTasksByUser ?? {}),
+      [userId]: {
+        ...(state.paperTasksByUser?.[userId] ?? {}),
+        [paperId]: binding,
+      },
+    },
+  }));
+}
+
 /**
  * Drop any binding(s) that reference the given Conductor taskId. Used when
  * Conductor reports `task_not_found` for a stored binding (task was deleted
@@ -443,6 +487,29 @@ export async function clearPaperTaskBindingByTaskId(taskId: string) {
       next[paperId] = binding;
     }
     return mutated ? { ...state, paperTasks: next } : state;
+  });
+}
+
+export async function clearUserPaperTaskBindingByTaskId(userId: string, taskId: string) {
+  await mutateArxivState((state) => {
+    const map = state.paperTasksByUser?.[userId] ?? {};
+    let mutated = false;
+    const next: Record<string, PaperTaskBinding> = {};
+    for (const [paperId, binding] of Object.entries(map)) {
+      if (binding.taskId === taskId) {
+        mutated = true;
+        continue;
+      }
+      next[paperId] = binding;
+    }
+    if (!mutated) return state;
+    return {
+      ...state,
+      paperTasksByUser: {
+        ...(state.paperTasksByUser ?? {}),
+        [userId]: next,
+      },
+    };
   });
 }
 

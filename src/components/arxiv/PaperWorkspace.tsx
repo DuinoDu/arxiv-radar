@@ -17,7 +17,15 @@ function clamp(value: number) {
   return Math.min(Math.max(value, MIN_READER_PERCENT), MAX_READER_PERCENT);
 }
 
-export function PaperWorkspace({ view, paper }: { view: WorkspaceView; paper: AnalyzedPaper }) {
+export function PaperWorkspace({
+  view,
+  paper,
+  authenticated,
+}: {
+  view: WorkspaceView;
+  paper: AnalyzedPaper;
+  authenticated: boolean;
+}) {
   const [readerPercent, setReaderPercent] = useState(DEFAULT_READER_PERCENT);
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -134,7 +142,7 @@ export function PaperWorkspace({ view, paper }: { view: WorkspaceView; paper: An
       {isDragging ? <div className="fixed inset-0 z-50 cursor-col-resize lg:block" aria-hidden="true" /> : null}
 
       <div className={`min-w-0 lg:h-full lg:flex-1 ${isChatView ? "" : "hidden lg:block"}`}>
-        <PaperChat paper={paper} />
+        <PaperChat paper={paper} authenticated={authenticated} />
       </div>
     </div>
   );

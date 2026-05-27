@@ -61,16 +61,11 @@ function knownSettings(value: unknown): value is SettingsForm {
 export function SettingsPopup() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
   const [form, setForm] = useState<SettingsForm>(emptyForm);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -172,7 +167,7 @@ export function SettingsPopup() {
         <Settings className="h-4 w-4" aria-hidden="true" />
       </button>
 
-      {open && mounted
+      {open && typeof document !== "undefined"
         ? createPortal(
         <div
           className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-zinc-950/40 px-3 py-4 backdrop-blur-sm sm:py-8"
@@ -252,27 +247,6 @@ export function SettingsPopup() {
                   <section className="space-y-3">
                     <h3 className="text-sm font-semibold tracking-normal">chat</h3>
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <label className="block text-sm sm:col-span-2">
-                        <span className="mb-1.5 block text-zinc-600 dark:text-zinc-300">Conductor 地址</span>
-                        <input
-                          type="url"
-                          value={form.conductorBaseUrl}
-                          onChange={(event) => updateField("conductorBaseUrl", event.target.value)}
-                          className="h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none transition focus:border-zinc-500 dark:border-zinc-800 dark:bg-zinc-950 dark:focus:border-zinc-500"
-                          placeholder="https://conductor.example.com"
-                        />
-                      </label>
-                      <label className="block text-sm sm:col-span-2">
-                        <span className="mb-1.5 block text-zinc-600 dark:text-zinc-300">Conductor key</span>
-                        <input
-                          type="password"
-                          value={form.conductorToken}
-                          onChange={(event) => updateField("conductorToken", event.target.value)}
-                          className="h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none transition focus:border-zinc-500 dark:border-zinc-800 dark:bg-zinc-950 dark:focus:border-zinc-500"
-                          placeholder={form.conductorTokenConfigured ? "已配置，留空则保持" : "输入 key"}
-                          autoComplete="off"
-                        />
-                      </label>
                       <label className="block text-sm">
                         <span className="mb-1.5 block text-zinc-600 dark:text-zinc-300">daemon</span>
                         <input

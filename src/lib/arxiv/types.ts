@@ -108,9 +108,14 @@ export interface ArxivState {
   /**
    * Per-paper Conductor task binding. Created lazily by
    * `POST /api/conductor/bind` and reused for the lifetime of the paper.
-   * The chat transcript itself lives in Conductor, not here.
+   * Legacy configuration-token bindings remain here for existing data only.
    */
   paperTasks?: Record<string, PaperTaskBinding>;
+  /**
+   * SSO user-scoped task bindings. A task is created using that user's
+   * Conductor token, so it must never be reused by another account.
+   */
+  paperTasksByUser?: Record<string, Record<string, PaperTaskBinding>>;
 }
 
 export interface RunArxivAnalysisOptions {

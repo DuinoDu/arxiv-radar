@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { readArxivState } from "@/lib/arxiv/store";
 import { getConductorClient } from "@/lib/conductor/client";
+import { getCurrentAuthSession } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,14 +35,21 @@ function isKilledChatStatus(status: string) {
 }
 
 export async function GET() {
+  const session = await getCurrentAuthSession();
+  if (!session) {
+    return NextResponse.json({
+      runningPaperIds: [],
+      killedPaperIds: [],
+    } satisfies ChatStatusResponse);
+  }
+
   const state = await readArxivState();
-  const conductorConfigured = Boolean(
-    state.settings.conductor.baseUrl && state.settings.conductor.token,
-  );
   const visiblePaperIds = new Set(
     state.papers.filter((paper) => !paper.removed).map((paper) => paper.id),
   );
-  const paperTasks: BoundPaperTask[] = Object.entries(state.paperTasks ?? {})
+  const paperTasks: BoundPaperTask[] = Object.entries(
+    state.paperTasksByUser?.[session.user.id] ?? {},
+  )
     .filter(([paperId]) => visiblePaperIds.has(paperId))
     .map(([paperId, binding]) => ({
       paperId,
@@ -49,7 +57,7 @@ export async function GET() {
       taskId: binding.taskId,
     }));
 
-  if (paperTasks.length === 0 || !conductorConfigured) {
+  if (paperTasks.length === 0) {
     return NextResponse.json({
       runningPaperIds: [],
       killedPaperIds: [],
@@ -57,7 +65,7 @@ export async function GET() {
   }
 
   try {
-    const client = await getConductorClient();
+    const client = await getConductorClient(session);
     const taskById = new Map<string, { id: string; status?: unknown }>();
     const projectTasks = await Promise.all(
       Array.from(new Set(paperTasks.map((task) => task.projectId))).map((projectId) =>
