@@ -31,6 +31,19 @@ ARXIV_DATA_FILE_NAME=arxiv-state.json
 MAX_STORED_PAPERS=800
 ```
 
+Conductor SSO 登录需要在 Conductor 侧注册 `arxiv-radar` client，并确保
+`redirect_uris` 包含 `${APP_URL}/api/auth/callback`。arxiv-radar 侧配置：
+
+```bash
+CONDUCTOR_BASE_URL=https://conductor-ai.top
+CONDUCTOR_SSO_CLIENT_ID=arxiv-radar
+CONDUCTOR_SSO_CLIENT_SECRET=...
+ARXIV_AUTH_SECRET=...
+```
+
+`CONDUCTOR_SSO_CLIENT_SECRET` 必须与 Conductor 侧注册的 client secret 一致；
+`ARXIV_AUTH_SECRET` 用于加密 arxiv-radar 自己的 HttpOnly session cookie。
+
 部署到 Vercel 时建议启用 Vercel Blob 持久化：
 
 ```bash

@@ -41,8 +41,10 @@ import {
 } from "@/lib/arxiv/paper-list";
 import { ManualAddButton } from "@/components/arxiv/ManualAddButton";
 import { RunAnalysisButton } from "@/components/arxiv/RunAnalysisButton";
+import { AuthButton } from "@/components/auth/AuthButton";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { useFavorites } from "@/lib/arxiv/useFavorites";
+import type { PublicAuthUser } from "@/lib/auth/session";
 
 function GithubIcon(props: SVGProps<SVGSVGElement>) {
   return (
@@ -835,11 +837,13 @@ function RecentRuns({ runs, timeZone }: { runs: AnalysisRun[]; timeZone: string 
 }
 
 export function PaperDashboard({
+  authUser = null,
   disableManualRun = false,
   initialData,
   initialFilter,
   timeZone,
 }: {
+  authUser?: PublicAuthUser | null;
   disableManualRun?: boolean;
   initialData: PaperListInitialData;
   initialFilter: TagFilter;
@@ -1394,10 +1398,16 @@ export function PaperDashboard({
               ) : null}
             </div>
 
-            <div className="hidden items-start gap-3 md:flex">
-              <ThemeToggle />
-              <ManualAddButton onPaperExists={focusExistingPaper} />
-              <RunAnalysisButton disabled={disableManualRun} />
+            <div className="flex items-start gap-2 md:gap-3">
+              <div className="md:hidden">
+                <AuthButton compact initialUser={authUser} />
+              </div>
+              <div className="hidden items-start gap-3 md:flex">
+                <AuthButton initialUser={authUser} />
+                <ThemeToggle />
+                <ManualAddButton onPaperExists={focusExistingPaper} />
+                <RunAnalysisButton disabled={disableManualRun} />
+              </div>
             </div>
           </div>
 
