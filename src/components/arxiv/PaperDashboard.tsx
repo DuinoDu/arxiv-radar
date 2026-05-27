@@ -1418,7 +1418,7 @@ export function PaperDashboard({
                 <ManualAddButton onPaperExists={focusExistingPaper} />
                 <RunAnalysisButton disabled={disableManualRun} />
               </div>
-              <SettingsPopup />
+              {authUser ? <SettingsPopup /> : null}
             </div>
           </div>
 
