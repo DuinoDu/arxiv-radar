@@ -7,10 +7,17 @@ import {
   AlertCircle,
   CheckCircle2,
   Loader2,
+  Plus,
   Save,
   Settings,
+  Trash2,
   X,
 } from "lucide-react";
+
+type TagConfigForm = {
+  id: string;
+  label: string;
+};
 
 type SettingsForm = {
   arxivDailyUrl: string;
@@ -24,6 +31,7 @@ type SettingsForm = {
   conductorWorkspacePath: string;
   conductorAppName: string;
   conductorBackendType: string;
+  tags: TagConfigForm[];
 };
 
 const emptyForm: SettingsForm = {
@@ -38,6 +46,7 @@ const emptyForm: SettingsForm = {
   conductorWorkspacePath: "",
   conductorAppName: "arxiv-radar",
   conductorBackendType: "",
+  tags: [],
 };
 
 function knownSettings(value: unknown): value is SettingsForm {
@@ -54,7 +63,8 @@ function knownSettings(value: unknown): value is SettingsForm {
     typeof candidate.conductorDaemonHost === "string" &&
     typeof candidate.conductorWorkspacePath === "string" &&
     typeof candidate.conductorAppName === "string" &&
-    typeof candidate.conductorBackendType === "string"
+    typeof candidate.conductorBackendType === "string" &&
+    Array.isArray(candidate.tags)
   );
 }
 
@@ -123,6 +133,35 @@ export function SettingsPopup() {
     setForm((current) => ({
       ...current,
       [key]: value,
+    }));
+  }
+
+  function addTag() {
+    setSaved(false);
+    setError("");
+    setForm((current) => ({
+      ...current,
+      tags: [...current.tags, { id: "", label: "" }],
+    }));
+  }
+
+  function updateTag(index: number, field: "id" | "label", value: string) {
+    setSaved(false);
+    setError("");
+    setForm((current) => ({
+      ...current,
+      tags: current.tags.map((tag, i) =>
+        i === index ? { ...tag, [field]: value } : tag,
+      ),
+    }));
+  }
+
+  function removeTag(index: number) {
+    setSaved(false);
+    setError("");
+    setForm((current) => ({
+      ...current,
+      tags: current.tags.filter((_, i) => i !== index),
     }));
   }
 
@@ -274,7 +313,7 @@ export function SettingsPopup() {
                           value={form.conductorWorkspacePath}
                           onChange={(event) => updateField("conductorWorkspacePath", event.target.value)}
                           className="h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none transition focus:border-zinc-500 dark:border-zinc-800 dark:bg-zinc-950 dark:focus:border-zinc-500"
-                          placeholder="/path/to/workspace"
+                          placeholder="~/ws/workspace"
                         />
                       </label>
                       <label className="block text-sm sm:col-span-2">
@@ -288,6 +327,55 @@ export function SettingsPopup() {
                         />
                       </label>
                     </div>
+                  </section>
+
+                  <section className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold tracking-normal">tags</h3>
+                      <button
+                        type="button"
+                        onClick={addTag}
+                        className="inline-flex h-7 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
+                      >
+                        <Plus className="h-3 w-3" aria-hidden="true" />
+                        添加
+                      </button>
+                    </div>
+                    {form.tags.length === 0 ? (
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                        暂无标签，点击添加。
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {form.tags.map((tag, index) => (
+                          <div key={index} className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={tag.id}
+                              onChange={(event) => updateTag(index, "id", event.target.value)}
+                              className="h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none transition focus:border-zinc-500 dark:border-zinc-800 dark:bg-zinc-950 dark:focus:border-zinc-500"
+                              placeholder="ID (如 vla)"
+                            />
+                            <input
+                              type="text"
+                              value={tag.label}
+                              onChange={(event) => updateTag(index, "label", event.target.value)}
+                              className="h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none transition focus:border-zinc-500 dark:border-zinc-800 dark:bg-zinc-950 dark:focus:border-zinc-500"
+                              placeholder="显示名 (如 VLA)"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeTag(index)}
+                              aria-label="删除标签"
+                              title="删除"
+                              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-zinc-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </section>
                 </>
               )}

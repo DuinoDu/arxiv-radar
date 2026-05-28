@@ -6,6 +6,7 @@
  * missing, so browser-facing routes pass their authenticated session here.
  */
 import { promises as fs } from "node:fs";
+import { homedir } from "node:os";
 import { connect, type AppClient } from "@love-moon/app-sdk/server";
 import { createEnvAppSettings, requireConductorValue } from "@/lib/app-settings";
 import { readAppSettings } from "@/lib/arxiv/store";
@@ -114,10 +115,15 @@ export async function bindArxivRadarProject(session?: AuthSession) {
   const settings = session
     ? await readAppSettings(session.user.id)
     : createEnvAppSettings();
-  const workspacePath = requireConductorValue(
+  const rawWorkspacePath = requireConductorValue(
     settings.conductor.workspacePath,
     "workspacePath",
   );
+  const workspacePath = rawWorkspacePath.startsWith("~/")
+    ? `${homedir()}${rawWorkspacePath.slice(1)}`
+    : rawWorkspacePath === "~"
+      ? homedir()
+      : rawWorkspacePath;
 
   try {
     await fs.mkdir(workspacePath, { recursive: true });

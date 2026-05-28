@@ -13,6 +13,7 @@ import {
   type PaperTag,
   type PaperTagSource,
   type PaperTaskBinding,
+  type TagConfig,
 } from "./types";
 
 const STATE_VERSION = 1;
@@ -39,6 +40,7 @@ type SettingsRow = QueryResultRow & {
   conductor_workspace_path: string;
   conductor_app_name: string;
   conductor_backend_type: string;
+  tags: unknown;
 };
 
 type PaperRow = QueryResultRow & {
@@ -166,6 +168,17 @@ function settingsWithInitialConductorBaseUrl(options: UserOptions = {}) {
   return normalizeAppSettings(defaults);
 }
 
+function parseTagConfigs(value: unknown): TagConfig[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const result: TagConfig[] = [];
+  for (const item of value) {
+    if (item && typeof item === "object" && typeof item.id === "string" && typeof item.label === "string") {
+      result.push({ id: item.id, label: item.label });
+    }
+  }
+  return result.length > 0 ? result : undefined;
+}
+
 function settingsFromRow(row: SettingsRow): AppSettings {
   return normalizeAppSettings({
     arxivDailyUrl: row.arxiv_daily_url,
@@ -181,6 +194,7 @@ function settingsFromRow(row: SettingsRow): AppSettings {
       appName: row.conductor_app_name,
       backendType: row.conductor_backend_type,
     },
+    tags: parseTagConfigs(row.tags),
   });
 }
 
@@ -271,7 +285,8 @@ async function readSettingsForUser(userId: string, client?: Queryable) {
         conductor_daemon_host,
         conductor_workspace_path,
         conductor_app_name,
-        conductor_backend_type
+        conductor_backend_type,
+        tags
       FROM user_settings
       WHERE user_id = $1
     `,
@@ -536,9 +551,10 @@ async function saveSettings(
         conductor_daemon_host,
         conductor_workspace_path,
         conductor_app_name,
-        conductor_backend_type
+        conductor_backend_type,
+        tags
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
       ON CONFLICT (user_id) DO UPDATE SET
         arxiv_daily_url = EXCLUDED.arxiv_daily_url,
         cron_enabled = EXCLUDED.cron_enabled,
@@ -549,6 +565,7 @@ async function saveSettings(
         conductor_workspace_path = EXCLUDED.conductor_workspace_path,
         conductor_app_name = EXCLUDED.conductor_app_name,
         conductor_backend_type = EXCLUDED.conductor_backend_type,
+        tags = EXCLUDED.tags,
         updated_at = now()
     `,
     [
@@ -562,6 +579,7 @@ async function saveSettings(
       normalized.conductor.workspacePath,
       normalized.conductor.appName,
       normalized.conductor.backendType,
+      JSON.stringify(normalized.tags),
     ],
   );
 }

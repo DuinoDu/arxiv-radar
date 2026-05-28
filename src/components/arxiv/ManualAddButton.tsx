@@ -4,16 +4,17 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AlertCircle, CheckCircle2, Loader2, Plus, X } from "lucide-react";
-import { PAPER_TAGS, type PaperTag } from "@/lib/arxiv/types";
-import { tagLabels } from "@/lib/arxiv/filters";
+import { DEFAULT_TAG_CONFIGS, type PaperTag, type TagConfig } from "@/lib/arxiv/types";
 import { useFavorites } from "@/lib/arxiv/useFavorites";
 
 type SubmitState = "idle" | "submitting" | "done" | "error";
 
 export function ManualAddButton({
   onPaperExists,
+  tagConfigs = DEFAULT_TAG_CONFIGS,
 }: {
   onPaperExists?: (id: string) => void;
+  tagConfigs?: TagConfig[];
 }) {
   const router = useRouter();
   const { addFavorite } = useFavorites();
@@ -198,13 +199,13 @@ export function ManualAddButton({
                   手动 tag（可选）
                 </span>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {PAPER_TAGS.map((tag) => {
-                    const active = tags.has(tag);
+                  {tagConfigs.map((tc) => {
+                    const active = tags.has(tc.id as PaperTag);
                     return (
                       <button
-                        key={tag}
+                        key={tc.id}
                         type="button"
-                        onClick={() => toggleTag(tag)}
+                        onClick={() => toggleTag(tc.id as PaperTag)}
                         disabled={state === "submitting"}
                         aria-pressed={active}
                         className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium transition ${
@@ -213,7 +214,7 @@ export function ManualAddButton({
                             : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
                         }`}
                       >
-                        {tagLabels[tag]}
+                        {tc.label}
                       </button>
                     );
                   })}

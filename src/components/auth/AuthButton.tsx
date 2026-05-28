@@ -10,8 +10,12 @@ type AuthPayload = {
   user?: PublicAuthUser | null;
 };
 
+function maskPhone(phone: string) {
+  return phone.length >= 4 ? `****${phone.slice(-4)}` : phone;
+}
+
 function userLabel(user: PublicAuthUser) {
-  return user.name || user.email || user.phone || user.id.slice(0, 8);
+  return user.name || user.email || (user.phone ? maskPhone(user.phone) : null) || user.id.slice(0, 8);
 }
 
 export function AuthButton({
@@ -24,7 +28,7 @@ export function AuthButton({
   const router = useRouter();
   const [user, setUser] = useState<PublicAuthUser | null>(initialUser);
   const [busy, setBusy] = useState(false);
-  const label = useMemo(() => (user ? userLabel(user) : "登录"), [user]);
+  const label = useMemo(() => (user ? userLabel(user) : "SSO 登录"), [user]);
 
   async function refreshUser() {
     try {
@@ -56,11 +60,11 @@ export function AuthButton({
         className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 hover:text-zinc-950 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900 dark:hover:text-white ${
           compact ? "w-10 px-0" : ""
         }`}
-        aria-label="使用 Conductor 登录"
-        title="使用 Conductor 登录"
+        aria-label="SSO 登录"
+        title="SSO 登录"
       >
         <LogIn className="h-4 w-4" aria-hidden="true" />
-        {compact ? null : <span>登录</span>}
+        {compact ? null : <span>SSO 登录</span>}
       </a>
     );
   }

@@ -5,7 +5,7 @@ export const PAPER_LIST_PAGE_SIZE = 40;
 export const PAPER_LIST_MAX_PAGE_SIZE = 80;
 export const DEFAULT_PAPER_LIST_TIME_ZONE = "UTC";
 
-export type PaperCountsByTag = Record<PaperTag, number>;
+export type PaperCountsByTag = Record<string, number>;
 
 export interface PaperListDateBucket {
   date: string;
@@ -40,11 +40,14 @@ export function getVisiblePapers(state: ArxivState): AnalyzedPaper[] {
   return state.papers.filter((paper) => !paper.removed);
 }
 
-export function countPaperTags(papers: readonly AnalyzedPaper[]): PaperCountsByTag {
+export function countPaperTags(
+  papers: readonly AnalyzedPaper[],
+  tagIds: readonly string[] = PAPER_TAGS,
+): PaperCountsByTag {
   return Object.fromEntries(
-    PAPER_TAGS.map((tag) => [
+    tagIds.map((tag) => [
       tag,
-      papers.reduce((count, paper) => (paper.tags.includes(tag) ? count + 1 : count), 0),
+      papers.reduce((count, paper) => (paper.tags.includes(tag as PaperTag) ? count + 1 : count), 0),
     ]),
   ) as PaperCountsByTag;
 }
@@ -127,13 +130,14 @@ export function getPaperDateBuckets(
 export function getPaperListSummary(
   state: ArxivState,
   timeZone = DEFAULT_PAPER_LIST_TIME_ZONE,
+  tagIds?: readonly string[],
 ): PaperListSummary {
   const visiblePapers = getVisiblePapers(state);
   return {
     totalPapers: visiblePapers.length,
     processedCount: state.processedArticleIds.length,
     favoriteCount: state.favoriteIds.length,
-    countsByTag: countPaperTags(visiblePapers),
+    countsByTag: countPaperTags(visiblePapers, tagIds),
     dateBuckets: getPaperDateBuckets(visiblePapers, timeZone),
     runs: state.runs,
     updatedAt: state.updatedAt,
@@ -189,7 +193,7 @@ export function filterPapers(
     return options.paperIds ? result.slice() : [];
   }
 
-  return result.filter((paper) => paper.tags.includes(filter));
+  return result.filter((paper) => (paper.tags as string[]).includes(filter));
 }
 
 export function getPaperListPage(
@@ -229,8 +233,9 @@ export function getInitialPaperListData(
   filter: TagFilter,
   requestedDate?: string | null,
   timeZone = DEFAULT_PAPER_LIST_TIME_ZONE,
+  tagIds?: readonly string[],
 ): PaperListInitialData {
-  const summary = getPaperListSummary(state, timeZone);
+  const summary = getPaperListSummary(state, timeZone, tagIds);
   const normalizedRequestedDate = requestedDate ?? null;
   const selectedDate =
     filter === "all"

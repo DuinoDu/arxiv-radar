@@ -1,5 +1,5 @@
 import { ARXIV_RECENT_URL } from "@/lib/arxiv/fetcher";
-import type { AppSettings } from "@/lib/arxiv/types";
+import { DEFAULT_TAG_CONFIGS, type AppSettings, type TagConfig } from "@/lib/arxiv/types";
 
 export interface PublicAppSettings {
   arxivDailyUrl: string;
@@ -13,6 +13,7 @@ export interface PublicAppSettings {
   conductorWorkspacePath: string;
   conductorAppName: string;
   conductorBackendType: string;
+  tags: TagConfig[];
 }
 
 export class SettingsValidationError extends Error {
@@ -91,7 +92,23 @@ export function createEnvAppSettings(): AppSettings {
       appName: process.env.CONDUCTOR_APP_NAME?.trim() || "arxiv-radar",
       backendType: process.env.CONDUCTOR_BACKEND_TYPE?.trim() || "",
     },
+    tags: DEFAULT_TAG_CONFIGS,
   };
+}
+
+function normalizeTagConfigs(value: unknown, fallback: TagConfig[]): TagConfig[] {
+  if (!Array.isArray(value)) return fallback;
+  const seen = new Set<string>();
+  const result: TagConfig[] = [];
+  for (const item of value) {
+    if (!isRecord(item)) continue;
+    const id = stringValue(item.id, "").replace(/\s+/g, "_").toLowerCase();
+    const label = stringValue(item.label, "");
+    if (!id || !label || seen.has(id)) continue;
+    seen.add(id);
+    result.push({ id, label });
+  }
+  return result.length > 0 ? result : fallback;
 }
 
 export function normalizeAppSettings(
@@ -116,6 +133,7 @@ export function normalizeAppSettings(
       appName: stringValue(conductor.appName, fallback.conductor.appName) || "arxiv-radar",
       backendType: stringValue(conductor.backendType, fallback.conductor.backendType),
     },
+    tags: normalizeTagConfigs(root.tags, fallback.tags),
   };
 }
 
@@ -132,6 +150,7 @@ export function toPublicAppSettings(settings: AppSettings): PublicAppSettings {
     conductorWorkspacePath: settings.conductor.workspacePath,
     conductorAppName: settings.conductor.appName,
     conductorBackendType: settings.conductor.backendType,
+    tags: settings.tags,
   };
 }
 
@@ -169,6 +188,7 @@ export function settingsFromPublicInput(
       appName: stringValue(input.conductorAppName, current.conductor.appName) || "arxiv-radar",
       backendType: stringValue(input.conductorBackendType, current.conductor.backendType),
     },
+    tags: normalizeTagConfigs(input.tags, current.tags),
   };
 }
 

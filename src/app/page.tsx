@@ -2,7 +2,8 @@ import { PaperDashboard } from "@/components/arxiv/PaperDashboard";
 import { LoginRequired } from "@/components/auth/LoginRequired";
 import { parseTagFilter } from "@/lib/arxiv/filters";
 import { getInitialPaperListData, normalizePaperDateKey } from "@/lib/arxiv/paper-list";
-import { readArxivState } from "@/lib/arxiv/store";
+import { readAppSettings, readArxivState } from "@/lib/arxiv/store";
+import { DEFAULT_TAG_CONFIGS } from "@/lib/arxiv/types";
 import { getCurrentAuthUser } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
@@ -16,15 +17,26 @@ type SearchParams = {
 
 export default async function Home({ searchParams }: { searchParams?: Promise<SearchParams> }) {
   const params = await searchParams;
-  const initialFilter = parseTagFilter(params?.tag);
   const initialDate = normalizePaperDateKey(params?.date);
   const authUser = await getCurrentAuthUser();
   if (!authUser) {
     return <LoginRequired />;
   }
 
-  const state = await readArxivState(authUser.id);
-  const initialData = getInitialPaperListData(state, initialFilter, initialDate, TIME_ZONE);
+  const [state, settings] = await Promise.all([
+    readArxivState(authUser.id),
+    readAppSettings(authUser.id),
+  ]);
+  const tagConfigs = settings.tags.length > 0 ? settings.tags : DEFAULT_TAG_CONFIGS;
+  const tagIds = new Set(tagConfigs.map((t) => t.id));
+  const initialFilter = parseTagFilter(params?.tag, tagIds);
+  const initialData = getInitialPaperListData(
+    state,
+    initialFilter,
+    initialDate,
+    TIME_ZONE,
+    tagConfigs.map((t) => t.id),
+  );
 
   return (
     <PaperDashboard
@@ -32,6 +44,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<Se
       disableManualRun={Boolean(process.env.CRON_SECRET)}
       initialData={initialData}
       initialFilter={initialFilter}
+      tagConfigs={tagConfigs}
       timeZone={TIME_ZONE}
     />
   );

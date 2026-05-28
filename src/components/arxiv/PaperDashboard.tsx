@@ -3,32 +3,25 @@
 import type { MouseEvent, ReactNode, SVGProps } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Bot,
-  BrainCircuit,
   ChevronDown,
-  Eye,
   FileText,
-  Glasses,
-  Hand,
   Heart,
   History,
-  Map as MapIcon,
   MessageCircle,
-  MonitorPlay,
   Plus,
   Tag,
-  Radio,
   Trash2,
-  Workflow,
   X,
 } from "lucide-react";
-import { parseTagFilter, tagLabels, type TagFilter } from "@/lib/arxiv/filters";
+import { buildTagLabels, parseTagFilter, type TagFilter } from "@/lib/arxiv/filters";
 import {
   PAPER_TAGS,
+  DEFAULT_TAG_CONFIGS,
   type AnalysisRun,
   type AnalyzedPaper,
   type PaperTag,
   type RunStatus,
+  type TagConfig,
 } from "@/lib/arxiv/types";
 import {
   PAPER_LIST_PAGE_SIZE,
@@ -65,9 +58,7 @@ function GithubIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-const paperTagSet = new Set<string>(PAPER_TAGS);
-
-const tagStyles: Record<PaperTag, string> = {
+const defaultTagStyles: Record<string, string> = {
   egocentric:
     "border-cyan-200 bg-cyan-50 text-cyan-800 dark:border-cyan-900 dark:bg-cyan-950/50 dark:text-cyan-200",
   vla:
@@ -87,6 +78,18 @@ const tagStyles: Record<PaperTag, string> = {
   sim:
     "border-indigo-200 bg-indigo-50 text-indigo-800 dark:border-indigo-900 dark:bg-indigo-950/50 dark:text-indigo-200",
 };
+
+const fallbackTagStylePalette = [
+  "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-200",
+  "border-teal-200 bg-teal-50 text-teal-800 dark:border-teal-900 dark:bg-teal-950/50 dark:text-teal-200",
+  "border-pink-200 bg-pink-50 text-pink-800 dark:border-pink-900 dark:bg-pink-950/50 dark:text-pink-200",
+  "border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-900 dark:bg-blue-950/50 dark:text-blue-200",
+  "border-yellow-200 bg-yellow-50 text-yellow-800 dark:border-yellow-900 dark:bg-yellow-950/50 dark:text-yellow-200",
+];
+
+function getTagStyle(tagId: string, index: number): string {
+  return defaultTagStyles[tagId] ?? fallbackTagStylePalette[index % fallbackTagStylePalette.length];
+}
 
 const statusLabels: Record<RunStatus, string> = {
   running: "运行中",
@@ -115,8 +118,8 @@ type PaperListPayload = Partial<PaperListPage> & {
   error?: string;
 };
 
-function emptyCountsByTag(): PaperCountsByTag {
-  return Object.fromEntries(PAPER_TAGS.map((tag) => [tag, 0])) as PaperCountsByTag;
+function emptyCountsByTag(tagIds: readonly string[]): PaperCountsByTag {
+  return Object.fromEntries(tagIds.map((tag) => [tag, 0])) as PaperCountsByTag;
 }
 
 function mergePaperLists(
@@ -232,8 +235,9 @@ function formatAuthors(authors: string[]) {
   return `${authors.slice(0, 4).join(", ")} 等 ${authors.length} 人`;
 }
 
-function knownPaperTags(tags: readonly string[]) {
-  return tags.filter((tag): tag is PaperTag => paperTagSet.has(tag));
+function knownPaperTags(tags: readonly string[], tagSet?: ReadonlySet<string>) {
+  const validSet = tagSet ?? new Set<string>(PAPER_TAGS);
+  return tags.filter((tag): tag is PaperTag => validSet.has(tag));
 }
 
 function arxivHtmlUrl(paper: AnalyzedPaper) {
@@ -349,11 +353,15 @@ function TagBadge({
   evidence,
   source,
   tag,
+  dynamicLabels,
+  styleIndex = 0,
 }: {
   confidence?: number;
   evidence?: string;
   source?: string;
   tag: PaperTag;
+  dynamicLabels: Record<string, string>;
+  styleIndex?: number;
 }) {
   const title = [
     source ? `来源：${source}` : undefined,
@@ -365,11 +373,11 @@ function TagBadge({
 
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${tagStyles[tag]}`}
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${getTagStyle(tag, styleIndex)}`}
       title={title || undefined}
     >
       <Tag className="h-3 w-3" aria-hidden="true" />
-      {tagLabels[tag]}
+      {dynamicLabels[tag] ?? tag}
     </span>
   );
 }
@@ -378,10 +386,14 @@ function EditableTagList({
   tags,
   onChange,
   onDone,
+  allTagIds,
+  dynamicLabels,
 }: {
   tags: PaperTag[];
   onChange: (next: PaperTag[]) => void;
   onDone: () => void;
+  allTagIds: readonly string[];
+  dynamicLabels: Record<string, string>;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -414,18 +426,17 @@ function EditableTagList({
     };
   }, [onDone]);
 
-  const usedSet = new Set(tags);
-  const unusedTags = PAPER_TAGS.filter((tag) => !usedSet.has(tag));
-  // Keep canonical order so the row doesn't visibly shuffle on each toggle.
-  const orderedTags = PAPER_TAGS.filter((tag) => usedSet.has(tag));
+  const usedSet = new Set<string>(tags);
+  const unusedTags = allTagIds.filter((tag) => !usedSet.has(tag));
+  const orderedTags = allTagIds.filter((tag) => usedSet.has(tag));
 
-  function removeTag(tag: PaperTag) {
-    onChange(orderedTags.filter((existing) => existing !== tag));
+  function removeTag(tag: string) {
+    onChange(orderedTags.filter((existing) => existing !== tag) as PaperTag[]);
   }
 
-  function addTag(tag: PaperTag) {
-    const next = PAPER_TAGS.filter((candidate) => usedSet.has(candidate) || candidate === tag);
-    onChange(next);
+  function addTag(tag: string) {
+    const next = allTagIds.filter((candidate) => usedSet.has(candidate) || candidate === tag);
+    onChange(next as PaperTag[]);
     setAddOpen(false);
   }
 
@@ -441,24 +452,27 @@ function EditableTagList({
           暂无标签，点击右侧 + 添加
         </span>
       ) : (
-        orderedTags.map((tag) => (
-          <span
-            key={tag}
-            className={`inline-flex -translate-y-px items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium shadow-md transition ${tagStyles[tag]}`}
-          >
-            <Tag className="h-3 w-3" aria-hidden="true" />
-            {tagLabels[tag]}
-            <button
-              type="button"
-              onClick={() => removeTag(tag)}
-              aria-label={`删除标签 ${tagLabels[tag]}`}
-              title={`删除 ${tagLabels[tag]}`}
-              className="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full text-current opacity-70 transition hover:bg-black/10 hover:opacity-100 dark:hover:bg-white/15"
+        orderedTags.map((tag, idx) => {
+          const label = dynamicLabels[tag] ?? tag;
+          return (
+            <span
+              key={tag}
+              className={`inline-flex -translate-y-px items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium shadow-md transition ${getTagStyle(tag, idx)}`}
             >
-              <X className="h-3 w-3" aria-hidden="true" />
-            </button>
-          </span>
-        ))
+              <Tag className="h-3 w-3" aria-hidden="true" />
+              {label}
+              <button
+                type="button"
+                onClick={() => removeTag(tag)}
+                aria-label={`删除标签 ${label}`}
+                title={`删除 ${label}`}
+                className="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full text-current opacity-70 transition hover:bg-black/10 hover:opacity-100 dark:hover:bg-white/15"
+              >
+                <X className="h-3 w-3" aria-hidden="true" />
+              </button>
+            </span>
+          );
+        })
       )}
 
       <div className="relative">
@@ -494,7 +508,7 @@ function EditableTagList({
                 className="inline-flex items-center gap-2 rounded px-2 py-1 text-left text-xs text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-900"
               >
                 <Tag className="h-3 w-3" aria-hidden="true" />
-                {tagLabels[tag]}
+                {dynamicLabels[tag] ?? tag}
               </button>
             ))}
           </div>
@@ -571,6 +585,9 @@ function PaperRow({
   isEditingTags,
   removePending,
   chatPending,
+  allTagIds,
+  dynamicLabels,
+  tagIdSet,
   onToggleFavorite,
   onChatClick,
   onChatCancel,
@@ -588,6 +605,9 @@ function PaperRow({
   isEditingTags: boolean;
   removePending: boolean;
   chatPending: boolean;
+  allTagIds: readonly string[];
+  dynamicLabels: Record<string, string>;
+  tagIdSet: ReadonlySet<string>;
   onToggleFavorite: (id: string) => void;
   onChatClick: (id: string) => void;
   onChatCancel: () => void;
@@ -632,9 +652,11 @@ function PaperRow({
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {isEditingTags ? (
               <EditableTagList
-                tags={knownPaperTags(paper.tags)}
+                tags={knownPaperTags(paper.tags, tagIdSet)}
                 onChange={(next) => onTagsChange(paper.id, next)}
                 onDone={onCancelTagEdit}
+                allTagIds={allTagIds}
+                dynamicLabels={dynamicLabels}
               />
             ) : (
               <div
@@ -642,18 +664,20 @@ function PaperRow({
                 title="双击编辑标签"
                 className="flex flex-wrap items-center gap-2"
               >
-                {knownPaperTags(paper.tags).length === 0 ? (
+                {knownPaperTags(paper.tags, tagIdSet).length === 0 ? (
                   <span className="select-none rounded-full border border-dashed border-zinc-300 px-2 py-0.5 text-xs text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
                     双击添加标签
                   </span>
                 ) : (
-                  knownPaperTags(paper.tags).map((tag) => (
+                  knownPaperTags(paper.tags, tagIdSet).map((tag, idx) => (
                     <TagBadge
                       key={tag}
                       confidence={paper.tagConfidence?.[tag]}
                       evidence={paper.tagEvidence?.[tag]}
                       source={formatTagSource(paper.tagSource, tag)}
                       tag={tag}
+                      dynamicLabels={dynamicLabels}
+                      styleIndex={idx}
                     />
                   ))
                 )}
@@ -861,14 +885,19 @@ export function PaperDashboard({
   disableManualRun = false,
   initialData,
   initialFilter,
+  tagConfigs = DEFAULT_TAG_CONFIGS,
   timeZone,
 }: {
   authUser?: PublicAuthUser | null;
   disableManualRun?: boolean;
   initialData: PaperListInitialData;
   initialFilter: TagFilter;
+  tagConfigs?: TagConfig[];
   timeZone: string;
 }) {
+  const tagIds = useMemo(() => tagConfigs.map((t) => t.id), [tagConfigs]);
+  const dynamicLabels = useMemo(() => buildTagLabels(tagConfigs), [tagConfigs]);
+  const tagIdSet = useMemo(() => new Set(tagIds), [tagIds]);
   const [activeFilter, setActiveFilter] = useState(initialFilter);
   const [focusedPaperId, setFocusedPaperId] = useState<string | null>(null);
   const [editingPaperId, setEditingPaperId] = useState<string | null>(null);
@@ -1168,7 +1197,7 @@ export function PaperDashboard({
 
   const lastRun = summary.runs[0];
   const lastCompletedRun = summary.runs.find((run) => run.status === "completed");
-  const countsByTag = summary.countsByTag ?? emptyCountsByTag();
+  const countsByTag = summary.countsByTag ?? emptyCountsByTag(tagIds);
   const latestPaperDate = summary.dateBuckets[0]?.date ?? null;
   const favoritesCount = favorites.size > 0 ? favorites.size : summary.favoriteCount;
   const runningChatCount = runningChatFilterIds.length;
@@ -1192,7 +1221,7 @@ export function PaperDashboard({
       return papers.filter((paper) => killedChatPaperIds.has(paper.id));
     }
 
-    return papers.filter((paper) => paper.tags.includes(activeFilter));
+    return papers.filter((paper) => (paper.tags as string[]).includes(activeFilter));
   }, [activeFilter, favorites, killedChatPaperIds, papers, runningChatPaperIds]);
   const listTitle =
     activeFilter === "all"
@@ -1203,12 +1232,12 @@ export function PaperDashboard({
           ? "运行中 chat 论文"
           : activeFilter === "killed_chat"
             ? "已停止 chat 论文"
-            : `${tagLabels[activeFilter]} 论文`;
+            : `${dynamicLabels[activeFilter] ?? activeFilter} 论文`;
 
   useEffect(() => {
     function handlePopState() {
       const params = new URLSearchParams(window.location.search);
-      const nextFilter = parseTagFilter(params.get("tag"));
+      const nextFilter = parseTagFilter(params.get("tag"), tagIdSet);
       const requestedDate = normalizePaperDateKey(params.get("date"));
       const nextDate =
         nextFilter === "all"
@@ -1223,7 +1252,7 @@ export function PaperDashboard({
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [latestPaperDate, loadPaperPage, summary.dateBuckets]);
+  }, [latestPaperDate, loadPaperPage, summary.dateBuckets, tagIdSet]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1469,7 +1498,7 @@ export function PaperDashboard({
               <div className="hidden items-start gap-3 md:flex">
                 <AuthButton initialUser={authUser} />
                 <ThemeToggle />
-                <ManualAddButton onPaperExists={focusExistingPaper} />
+                <ManualAddButton onPaperExists={focusExistingPaper} tagConfigs={tagConfigs} />
                 <RunAnalysisButton disabled={disableManualRun} />
               </div>
               {authUser ? <SettingsPopup /> : null}
@@ -1496,78 +1525,17 @@ export function PaperDashboard({
               label="全部"
               onSelect={selectFilter}
             />
-            <FilterLink
-              active={activeFilter === "egocentric"}
-              count={countsByTag.egocentric}
-              filter="egocentric"
-              icon={<Eye className="h-4 w-4" aria-hidden="true" />}
-              label="egocentric"
-              onSelect={selectFilter}
-            />
-            <FilterLink
-              active={activeFilter === "vla"}
-              count={countsByTag.vla}
-              filter="vla"
-              icon={<Workflow className="h-4 w-4" aria-hidden="true" />}
-              label="VLA"
-              onSelect={selectFilter}
-            />
-            <FilterLink
-              active={activeFilter === "world_model"}
-              count={countsByTag.world_model}
-              filter="world_model"
-              icon={<BrainCircuit className="h-4 w-4" aria-hidden="true" />}
-              label="WM"
-              onSelect={selectFilter}
-            />
-            <FilterLink
-              active={activeFilter === "so101"}
-              count={countsByTag.so101}
-              filter="so101"
-              icon={<Bot className="h-4 w-4" aria-hidden="true" />}
-              label="SO101"
-              onSelect={selectFilter}
-            />
-            <FilterLink
-              active={activeFilter === "vr"}
-              count={countsByTag.vr}
-              filter="vr"
-              icon={<Glasses className="h-4 w-4" aria-hidden="true" />}
-              label="VR"
-              onSelect={selectFilter}
-            />
-            <FilterLink
-              active={activeFilter === "teleop"}
-              count={countsByTag.teleop}
-              filter="teleop"
-              icon={<Radio className="h-4 w-4" aria-hidden="true" />}
-              label="teleop"
-              onSelect={selectFilter}
-            />
-            <FilterLink
-              active={activeFilter === "slam"}
-              count={countsByTag.slam}
-              filter="slam"
-              icon={<MapIcon className="h-4 w-4" aria-hidden="true" />}
-              label="SLAM"
-              onSelect={selectFilter}
-            />
-            <FilterLink
-              active={activeFilter === "umi"}
-              count={countsByTag.umi}
-              filter="umi"
-              icon={<Hand className="h-4 w-4" aria-hidden="true" />}
-              label="UMI"
-              onSelect={selectFilter}
-            />
-            <FilterLink
-              active={activeFilter === "sim"}
-              count={countsByTag.sim}
-              filter="sim"
-              icon={<MonitorPlay className="h-4 w-4" aria-hidden="true" />}
-              label="Sim"
-              onSelect={selectFilter}
-            />
+            {tagConfigs.map((tc) => (
+              <FilterLink
+                key={tc.id}
+                active={activeFilter === tc.id}
+                count={countsByTag[tc.id] ?? 0}
+                filter={tc.id}
+                icon={<Tag className="h-4 w-4" aria-hidden="true" />}
+                label={tc.label}
+                onSelect={selectFilter}
+              />
+            ))}
             <FilterLink
               active={activeFilter === "favorites"}
               count={favoritesCount}
@@ -1641,6 +1609,9 @@ export function PaperDashboard({
                 isEditingTags={editingPaperId === paper.id}
                 removePending={pendingRemoveId === paper.id}
                 chatPending={pendingChatId === paper.id}
+                allTagIds={tagIds}
+                dynamicLabels={dynamicLabels}
+                tagIdSet={tagIdSet}
                 onToggleFavorite={toggleFavorite}
                 onChatClick={handleChatClick}
                 onChatCancel={handleChatCancel}
