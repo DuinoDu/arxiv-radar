@@ -576,8 +576,6 @@ function paperCardDomId(id: string) {
   return `paper-card-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
 }
 
-const LONG_PRESS_MS = 500;
-
 function GithubInputButton({
   paperId,
   paperTitle,
@@ -589,28 +587,8 @@ function GithubInputButton({
 }) {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  const clearTimer = useCallback(() => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  }, []);
-
-  const handlePressStart = useCallback(() => {
-    clearTimer();
-    timerRef.current = setTimeout(() => {
-      setOpen(true);
-      timerRef.current = null;
-    }, LONG_PRESS_MS);
-  }, [clearTimer]);
-
-  const handlePressEnd = useCallback(() => {
-    clearTimer();
-  }, [clearTimer]);
 
   useEffect(() => {
     if (open && inputRef.current) {
@@ -642,8 +620,6 @@ function GithubInputButton({
     };
   }, [open]);
 
-  useEffect(() => clearTimer, [clearTimer]);
-
   function handleSubmit() {
     const trimmed = value.trim();
     if (!trimmed) return;
@@ -656,15 +632,10 @@ function GithubInputButton({
     <div ref={containerRef} className="relative">
       <button
         type="button"
-        title="未找到 GitHub 链接（长按手动输入）"
-        aria-label={`${paperTitle} 未找到 GitHub 链接（长按手动输入）`}
-        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 bg-zinc-100 text-zinc-400 transition touch-none select-none hover:bg-zinc-50 hover:text-zinc-500 active:bg-zinc-200 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-400 dark:active:bg-zinc-800"
-        style={{ WebkitTouchCallout: "none" }}
-        onPointerDown={handlePressStart}
-        onPointerUp={handlePressEnd}
-        onPointerLeave={handlePressEnd}
-        onPointerCancel={handlePressEnd}
-        onContextMenu={(e) => e.preventDefault()}
+        title="未找到 GitHub 链接（点击手动输入）"
+        aria-label={`${paperTitle} 未找到 GitHub 链接（点击手动输入）`}
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 bg-zinc-100 text-zinc-400 transition select-none hover:bg-zinc-50 hover:text-zinc-500 active:bg-zinc-200 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-400 dark:active:bg-zinc-800"
       >
         <GithubIcon className="h-4 w-4" />
       </button>
