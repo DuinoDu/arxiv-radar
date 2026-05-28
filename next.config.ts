@@ -1,12 +1,13 @@
 import type { NextConfig } from "next";
 import { dirname } from "node:path";
-import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 
-const require = createRequire(import.meta.url);
-const projectRoot = dirname(dirname(dirname(require.resolve("next/package.json"))));
+// Resolve the project root from this config file's own location so the value
+// is invariant to the package-manager layout (npm-hoisted vs pnpm/.pnpm).
+const projectRoot = dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ["127.0.0.1", "*.lhr.life", "*.localhost.run"],
+  allowedDevOrigins: ["127.0.0.1", "*.lhr.life", "*.localhost.run", "*.ngrok-free.dev"],
   turbopack: {
     root: projectRoot,
   },

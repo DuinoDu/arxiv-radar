@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
 
   if (!code || !state || !expectedState || state !== expectedState) {
     const response = redirectWithError(request, "invalid_state");
-    clearOAuthStateCookie(response);
+    clearOAuthStateCookie(response, request);
     return response;
   }
 
@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
         message: payload.message,
       });
       const redirect = redirectWithError(request, "token_exchange_failed");
-      clearOAuthStateCookie(redirect);
+      clearOAuthStateCookie(redirect, request);
       return redirect;
     }
 
@@ -84,7 +84,7 @@ export async function GET(request: NextRequest) {
     const accessToken = typeof payload.access_token === "string" ? payload.access_token : "";
     if (!user || !accessToken) {
       const redirect = redirectWithError(request, "invalid_token_response");
-      clearOAuthStateCookie(redirect);
+      clearOAuthStateCookie(redirect, request);
       return redirect;
     }
 
@@ -99,13 +99,13 @@ export async function GET(request: NextRequest) {
       user,
       conductorAccessToken: accessToken,
       conductorBaseUrl: resolvedConductorBaseUrl,
-    });
-    clearOAuthStateCookie(redirect);
+    }, request);
+    clearOAuthStateCookie(redirect, request);
     return redirect;
   } catch (error) {
     console.warn("[auth] callback failed", error);
     const response = redirectWithError(request, "callback_failed");
-    clearOAuthStateCookie(response);
+    clearOAuthStateCookie(response, request);
     return response;
   }
 }

@@ -46,18 +46,51 @@ function encryptionKey() {
   return createHash("sha256").update(sessionSecret()).digest();
 }
 
-function secureCookie() {
-  const appUrl = process.env.APP_URL ?? "";
-  return process.env.NODE_ENV === "production" || appUrl.startsWith("https://");
+function normalizeBaseUrl(value: string) {
+  return value.trim().replace(/\/+$/, "");
 }
 
-function cookieOptions(maxAge: number) {
+function requestBaseUrl(request: NextRequest) {
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const host = forwardedHost || request.headers.get("host");
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+
+  if (host) {
+    const protocol = forwardedProto || request.nextUrl.protocol.replace(/:$/, "");
+    return `${protocol}://${host}`.replace(/\/+$/, "");
+  }
+
+  return request.nextUrl.origin.replace(/\/+$/, "");
+}
+
+function isLocalBaseUrl(value: string) {
+  try {
+    const hostname = new URL(value).hostname;
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  } catch {
+    return false;
+  }
+}
+
+function secureCookie(request?: NextRequest) {
+  if (request) {
+    return requestBaseUrl(request).startsWith("https://");
+  }
+
+  const appUrl = process.env.APP_URL?.trim();
+  if (appUrl) {
+    return appUrl.startsWith("https://");
+  }
+  return process.env.NODE_ENV === "production";
+}
+
+function cookieOptions(maxAge: number, request?: NextRequest) {
   return {
     httpOnly: true,
     maxAge,
     path: "/",
     sameSite: "lax" as const,
-    secure: secureCookie(),
+    secure: secureCookie(request),
   };
 }
 
@@ -110,13 +143,13 @@ export function createOAuthState() {
   return randomBytes(16).toString("base64url");
 }
 
-export function setOAuthStateCookie(response: NextResponse, state: string) {
-  response.cookies.set(AUTH_STATE_COOKIE, state, cookieOptions(STATE_MAX_AGE_SECONDS));
+export function setOAuthStateCookie(response: NextResponse, state: string, request?: NextRequest) {
+  response.cookies.set(AUTH_STATE_COOKIE, state, cookieOptions(STATE_MAX_AGE_SECONDS, request));
 }
 
-export function clearOAuthStateCookie(response: NextResponse) {
+export function clearOAuthStateCookie(response: NextResponse, request?: NextRequest) {
   response.cookies.set(AUTH_STATE_COOKIE, "", {
-    ...cookieOptions(0),
+    ...cookieOptions(0, request),
     maxAge: 0,
   });
 }
@@ -128,6 +161,7 @@ export function readOAuthStateCookie(request: NextRequest) {
 export function setSessionCookie(
   response: NextResponse,
   input: Omit<AuthSession, "expiresAt" | "sessionId">,
+  request?: NextRequest,
 ) {
   const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000).toISOString();
   response.cookies.set(
@@ -137,13 +171,13 @@ export function setSessionCookie(
       sessionId: randomBytes(16).toString("base64url"),
       expiresAt,
     }),
-    cookieOptions(SESSION_MAX_AGE_SECONDS),
+    cookieOptions(SESSION_MAX_AGE_SECONDS, request),
   );
 }
 
-export function clearSessionCookie(response: NextResponse) {
+export function clearSessionCookie(response: NextResponse, request?: NextRequest) {
   response.cookies.set(AUTH_SESSION_COOKIE, "", {
-    ...cookieOptions(0),
+    ...cookieOptions(0, request),
     maxAge: 0,
   });
 }
@@ -160,8 +194,14 @@ export async function getCurrentAuthUser(): Promise<PublicAuthUser | null> {
 
 export function getAppBaseUrl(request?: NextRequest) {
   const configured = process.env.APP_URL?.trim();
-  if (configured) return configured.replace(/\/+$/, "");
-  if (request) return request.nextUrl.origin.replace(/\/+$/, "");
+  const requestOrigin = request ? requestBaseUrl(request) : "";
+
+  if (requestOrigin && (!configured || isLocalBaseUrl(configured))) {
+    return requestOrigin;
+  }
+
+  if (configured) return normalizeBaseUrl(configured);
+  if (requestOrigin) return requestOrigin;
   return "http://localhost:3000";
 }
 

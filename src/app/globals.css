@@ -44,24 +44,16 @@ summary::-webkit-details-marker {
 
 /* ----- @love-moon/app-sdk ChatView theme override -------------------------
  *
- * The SDK exposes a flat set of components (MessageList / RuntimeStatusBar /
- * MessageInput) under a root `.conductor-chat-view` div. PaperChat uses
- * `ChatProvider` directly so we can reorder them; everything else here
- * re-skins the widget to match arxiv-radar's zinc palette + adds dark mode
- * keyed off `next-themes`' `.dark` class.
+ * PaperChat renders `<ChatView />` directly now (≥0.4 SDK). The SDK already
+ * places MessageList → RuntimeStatusBar → MessageInput in DOM order via
+ * `grid-template-rows: 1fr auto auto`, so we don't need to swap to flex
+ * anymore. This block only re-skins the widget to arxiv-radar's zinc
+ * palette (light + dark, keyed off next-themes' `.dark` class).
  *
- * Why this loads after SDK styles in layout.tsx: at equal specificity later
- * loaded wins. The `display: flex` override below is the canonical example —
- * SDK defaults to `display: grid` with status/messages/input as the three
- * grid rows in that order, but we want flex column DOM-order so we can
- * place status between messages and input.
+ * Why this loads after SDK styles in layout.tsx: at equal specificity, later
+ * loaded wins; that's how our overrides take effect without `!important`.
  */
-
-/* --- Layout: swap SDK's grid for flex so DOM order drives visual order --- */
 .conductor-chat-view {
-  display: flex;
-  flex-direction: column;
-
   --conductor-paper: #ffffff;
   --conductor-text: #09090b;
   --conductor-text-muted: rgb(82 82 91);
@@ -85,17 +77,15 @@ summary::-webkit-details-marker {
   --accent: #fafafa;
 }
 
-/* Message list grows; input + status are auto-sized at the bottom. */
+/* Message list breathing room — SDK ships balanced vertical padding; this
+ * just tightens horizontal so wide bubbles match the rest of the panel. */
 .conductor-chat-view .conductor-message-list {
-  flex: 1 1 0;
-  min-height: 0;
   padding-inline: 12px;
 }
 
-/* --- Status bar: move from top divider to a thin band above the input --- */
+/* Tighten the status bar a little — SDK ships 32px min-height with 8px
+ * vertical padding; we run a denser layout. */
 .conductor-chat-view .conductor-runtime-status {
-  border-bottom: none;
-  border-top: 1px solid var(--conductor-border);
   min-height: 28px;
   padding: 6px 12px;
 }

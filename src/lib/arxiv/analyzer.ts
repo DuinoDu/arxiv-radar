@@ -26,6 +26,7 @@ const ModelAnalysisSchema = z.object({
       teleop: z.boolean().default(false),
       slam: z.boolean().default(false),
       umi: z.boolean().default(false),
+      sim: z.boolean().default(false),
     })
     .default({
       egocentric: false,
@@ -36,6 +37,7 @@ const ModelAnalysisSchema = z.object({
       teleop: false,
       slam: false,
       umi: false,
+      sim: false,
     }),
   tagEvidence: z
     .object({
@@ -47,6 +49,7 @@ const ModelAnalysisSchema = z.object({
       teleop: z.string().optional(),
       slam: z.string().optional(),
       umi: z.string().optional(),
+      sim: z.string().optional(),
     })
     .default({}),
   tagSource: z
@@ -59,6 +62,7 @@ const ModelAnalysisSchema = z.object({
       teleop: TagSourceFieldSchema,
       slam: TagSourceFieldSchema,
       umi: TagSourceFieldSchema,
+      sim: TagSourceFieldSchema,
     })
     .default({}),
   tagConfidence: z
@@ -71,6 +75,7 @@ const ModelAnalysisSchema = z.object({
       teleop: z.coerce.number().min(0).max(1).optional(),
       slam: z.coerce.number().min(0).max(1).optional(),
       umi: z.coerce.number().min(0).max(1).optional(),
+      sim: z.coerce.number().min(0).max(1).optional(),
     })
     .default({}),
   confidence: z.coerce.number().min(0).max(1).optional(),
@@ -144,6 +149,7 @@ function toTags(analysis: ModelAnalysis, fullText: PaperFullText) {
   addTag("teleop", "teleop", "LLM judged teleoperation usage from the supplied paper text.");
   addTag("slam", "slam", "LLM judged SLAM usage from the supplied paper text.");
   addTag("umi", "umi", "LLM judged UMI (Universal Manipulation Interface) usage from the supplied paper text.");
+  addTag("sim", "sim", "LLM judged simulator/simulation usage from the supplied paper text.");
 
   return {
     tags: Array.from(tags),
@@ -195,6 +201,7 @@ async function requestAnalysis(article: ArxivArticle, fullText: PaperFullText, u
             "teleop 只在论文明确涉及遥操作/teleoperation/remote operation/remote control，由人类远程控制机器人、机械臂、移动平台或机器人化身来完成任务、采集数据、示教、评测或实验时为 true；普通自动控制、远程监控、离线仿真、没有人类实时/远程控制机器人动作的不算。",
             "slam 只在论文明确使用、提出、改进或评估 SLAM/Simultaneous Localization and Mapping/同时定位与建图（含 visual SLAM、LiDAR SLAM、visual-inertial SLAM/VIO、dense SLAM、neural SLAM、Gaussian/NeRF SLAM、semantic SLAM 等）来做机器人/移动平台的定位、建图、姿态估计或导航时为 true；只做纯里程计、纯定位（无建图）、纯重建（无在线定位）、SLAM 仅作背景或相关工作的不算。",
             "umi 只在论文明确使用、复用、扩展或对比 UMI/Universal Manipulation Interface（Cheng Chi 等人提出的手持式 GoPro+夹爪便携数据采集装置，及其在野/in-the-wild 数据采集 + diffusion policy 训练流程，以及 Bimanual UMI/Mobile UMI/Fast-UMI/UMI-on-Legs 等明确派生工作）来采集人类示范、训练机器人策略、做操作学习或评测时为 true；只引用 UMI 论文作为相关工作、或在没有用到该 handheld gripper 数据采集装置/对应训练 pipeline 的普通 imitation/diffusion policy/示教学习论文不算。",
+            "sim 只在论文显著依赖物理/机器人仿真器或合成环境来做训练、数据生成、策略学习、sim-to-real 迁移、大规模评测或核心实验时为 true；包括 MuJoCo、Isaac Gym/Sim/Lab、Habitat、Genesis、Gazebo、PyBullet、RoboCasa、ManiSkill、RoboSuite、CARLA、AirSim、LeRobot sim 等已知仿真器，以及论文自建/扩展的仿真环境。只做纯几何/3D 渲染可视化、只用真机实验、仿真仅作相关工作或背景提及、单一定性 demo 而无仿真训练或评测的不算。",
             "如果正文可用，tagEvidence 应优先引用正文里的具体证据；没有足够证据就把对应 tag 设为 false。",
           ].join("\n"),
       },
@@ -231,6 +238,7 @@ async function requestAnalysis(article: ArxivArticle, fullText: PaperFullText, u
               teleop: "boolean",
               slam: "boolean",
               umi: "boolean",
+              sim: "boolean",
             },
             tagEvidence: {
               egocentric: "evidence string when true",
@@ -241,6 +249,7 @@ async function requestAnalysis(article: ArxivArticle, fullText: PaperFullText, u
               teleop: "evidence string when true",
               slam: "evidence string when true",
               umi: "evidence string when true",
+              sim: "evidence string when true",
             },
             tagSource: {
               egocentric: "title | abstract | full_text when true",
@@ -251,6 +260,7 @@ async function requestAnalysis(article: ArxivArticle, fullText: PaperFullText, u
               teleop: "title | abstract | full_text when true",
               slam: "title | abstract | full_text when true",
               umi: "title | abstract | full_text when true",
+              sim: "title | abstract | full_text when true",
             },
             tagConfidence: {
               egocentric: "0 to 1 when true",
@@ -261,6 +271,7 @@ async function requestAnalysis(article: ArxivArticle, fullText: PaperFullText, u
               teleop: "0 to 1 when true",
               slam: "0 to 1 when true",
               umi: "0 to 1 when true",
+              sim: "0 to 1 when true",
             },
             confidence: "0 to 1",
           },

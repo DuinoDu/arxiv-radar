@@ -16,6 +16,7 @@ export const tagLabels: Record<PaperTag, string> = {
   teleop: "teleop",
   slam: "SLAM",
   umi: "UMI",
+  sim: "Sim",
 };
 
 export function parseTagFilter(tag?: string | string[] | null): TagFilter {
@@ -30,6 +31,7 @@ export function parseTagFilter(tag?: string | string[] | null): TagFilter {
     value === "teleop" ||
     value === "slam" ||
     value === "umi" ||
+    value === "sim" ||
     value === "favorites" ||
     value === "running_chat" ||
     value === "killed_chat"

@@ -4,17 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, FileText, Globe2, LogIn, MessageSquare } from "lucide-react";
 import {
-  ChatProvider,
-  MessageInput,
-  RuntimeStatusBar,
+  ChatView,
   createRestAdapter,
-  useChat,
   type ChatViewLabels,
 } from "@love-moon/app-sdk/react";
 import { isConductorAppError } from "@love-moon/app-sdk";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import type { AnalyzedPaper } from "@/lib/arxiv/types";
-import { MessageList } from "@/components/arxiv/chat/MessageList";
 import {
   TaskStatusBadge,
   type ChatTaskStatus,
@@ -65,39 +61,6 @@ const MAX_AUTO_REBINDS = 3;
 // don't DDoS our BFF; tight enough that kill / restart transitions land in
 // the UI within ~5 seconds.
 const TASK_STATUS_POLL_MS = 5_000;
-
-/**
- * Inner component that lives INSIDE the ChatProvider so it can use
- * `useChat()` to get `send` / `interrupt` callbacks. These get passed to
- * MessageList → MessageBubble for the popup toolbar's Resend / Interrupt
- * actions. Restart is wired at the PaperChat level (it's not part of the
- * SDK store).
- */
-function ChatBody({
-  onRestart,
-  restartEnabled,
-  restartPending,
-}: {
-  onRestart?: () => void;
-  restartEnabled?: boolean;
-  restartPending?: boolean;
-}) {
-  const { send, interrupt } = useChat();
-  return (
-    <MessageList
-      labels={CHAT_LABELS}
-      onResend={(content) => {
-        void send(content);
-      }}
-      onRestart={onRestart}
-      restartEnabled={restartEnabled}
-      restartPending={restartPending}
-      onInterrupt={() => {
-        void interrupt();
-      }}
-    />
-  );
-}
 
 export function PaperChat({ paper, authenticated }: { paper: AnalyzedPaper; authenticated: boolean }) {
   const [taskId, setTaskId] = useState<string | null>(null);
@@ -421,31 +384,17 @@ export function PaperChat({ paper, authenticated }: { paper: AnalyzedPaper; auth
             加载中…
           </div>
         ) : (
-          // Manual composition (instead of `<ChatView>`) so we can put the
-          // runtime status bar above the input and inject our own MessageList
-          // (with double-click popup toolbar). `conductor-chat-view` is kept
-          // as the wrapper class so the SDK's component CSS applies, and
-          // globals.css overrides the SDK's `display: grid` to a flex column
-          // so DOM order drives visual order.
-          <div
-            className="conductor-chat-view absolute inset-0"
-            data-task-id={taskId}
-            data-layout="auto"
-          >
-            <ChatProvider
-              taskId={taskId}
-              adapter={adapter}
-              onError={handleChatError}
-            >
-              <ChatBody
-                onRestart={handleRestartTask}
-                restartEnabled={isStopped && !restarting}
-                restartPending={restarting}
-              />
-              <RuntimeStatusBar labels={CHAT_LABELS} />
-              <MessageInput labels={CHAT_LABELS} />
-            </ChatProvider>
-          </div>
+          // SDK 0.4.x renders messages itself (no more MessageBubble export);
+          // we let ChatView handle layout & per-message toolbar. Restart is
+          // exposed externally via the TaskStatusBadge below for now until the
+          // chat-migration worktree lands its replacement UI.
+          <ChatView
+            taskId={taskId}
+            adapter={adapter}
+            onError={handleChatError}
+            labels={CHAT_LABELS}
+            className="absolute inset-0"
+          />
         )}
       </div>
     </section>

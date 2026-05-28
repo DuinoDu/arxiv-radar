@@ -1,6 +1,6 @@
 const baseUrl = process.env.APP_URL || "http://localhost:3000";
 const cronSecret = process.env.CRON_SECRET;
-const pollMs = Number(process.env.ARXIV_WORKER_POLL_MS || 5 * 60 * 1000);
+const pollMs = Number(process.env.ARXIV_WORKER_POLL_MS || 60 * 60 * 1000);
 
 async function trigger() {
   const url = new URL("/api/cron/arxiv", baseUrl);

@@ -111,7 +111,7 @@ CREATE TABLE IF NOT EXISTS user_paper_tags (
     REFERENCES user_papers(user_id, paper_id)
     ON DELETE CASCADE,
   CONSTRAINT user_paper_tags_tag_check
-    CHECK (tag IN ('egocentric', 'vla', 'world_model', 'so101', 'vr', 'teleop', 'slam', 'umi')),
+    CHECK (tag IN ('egocentric', 'vla', 'world_model', 'so101', 'vr', 'teleop', 'slam', 'umi', 'sim')),
   CONSTRAINT user_paper_tags_source_check
     CHECK (source IN ('title', 'abstract', 'full_text'))
 );

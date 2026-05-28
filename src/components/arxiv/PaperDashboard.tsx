@@ -14,6 +14,7 @@ import {
   History,
   Map as MapIcon,
   MessageCircle,
+  MonitorPlay,
   Plus,
   Tag,
   Radio,
@@ -83,6 +84,8 @@ const tagStyles: Record<PaperTag, string> = {
     "border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-900 dark:bg-sky-950/50 dark:text-sky-200",
   umi:
     "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-200",
+  sim:
+    "border-indigo-200 bg-indigo-50 text-indigo-800 dark:border-indigo-900 dark:bg-indigo-950/50 dark:text-indigo-200",
 };
 
 const statusLabels: Record<RunStatus, string> = {
@@ -567,8 +570,10 @@ function PaperRow({
   highlighted,
   isEditingTags,
   removePending,
+  chatPending,
   onToggleFavorite,
-  onChatStart,
+  onChatClick,
+  onChatCancel,
   onStartTagEdit,
   onCancelTagEdit,
   onTagsChange,
@@ -582,8 +587,10 @@ function PaperRow({
   highlighted: boolean;
   isEditingTags: boolean;
   removePending: boolean;
+  chatPending: boolean;
   onToggleFavorite: (id: string) => void;
-  onChatStart: (id: string) => void;
+  onChatClick: (id: string) => void;
+  onChatCancel: () => void;
   onStartTagEdit: (id: string) => void;
   onCancelTagEdit: () => void;
   onTagsChange: (id: string, tags: PaperTag[]) => void;
@@ -688,23 +695,35 @@ function PaperRow({
               fill={isFavorite ? "currentColor" : "none"}
             />
           </button>
-          <a
-            href={paperChatPath(paper)}
-            target="_blank"
-            rel="noreferrer"
-            onClick={() => onChatStart(paper.id)}
-            title={chatStatusTitle(chatStatus)}
-            aria-label={`${paper.title} chat${chatStatusAriaSuffix(chatStatus)}`}
-            className="relative inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-900"
-          >
-            <MessageCircle className="h-4 w-4" aria-hidden="true" />
-            {chatStatus ? (
-              <ChatStatusDot
-                status={chatStatus}
-                className="absolute right-1 top-1 ring-2 ring-white dark:ring-zinc-950"
-              />
-            ) : null}
-          </a>
+          {chatPending ? (
+            <button
+              type="button"
+              onClick={() => onChatClick(paper.id)}
+              onBlur={onChatCancel}
+              title="再次点击进入 chat"
+              aria-label={`${paper.title} 确认进入 chat`}
+              className="inline-flex h-9 items-center gap-1 rounded-md border border-emerald-300 bg-emerald-50 px-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-200 dark:hover:bg-emerald-950"
+            >
+              <MessageCircle className="h-4 w-4" aria-hidden="true" />
+              chat?
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onChatClick(paper.id)}
+              title={chatStatusTitle(chatStatus)}
+              aria-label={`${paper.title} chat${chatStatusAriaSuffix(chatStatus)}`}
+              className="relative inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-900"
+            >
+              <MessageCircle className="h-4 w-4" aria-hidden="true" />
+              {chatStatus ? (
+                <ChatStatusDot
+                  status={chatStatus}
+                  className="absolute right-1 top-1 ring-2 ring-white dark:ring-zinc-950"
+                />
+              ) : null}
+            </button>
+          )}
           <a
             href={arxivHtmlUrl(paper)}
             target="_blank"
@@ -855,6 +874,7 @@ export function PaperDashboard({
   const [editingPaperId, setEditingPaperId] = useState<string | null>(null);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null);
+  const [pendingChatId, setPendingChatId] = useState<string | null>(null);
   const [summary, setSummary] = useState<PaperListSummary>(initialData.summary);
   const [summarySource, setSummarySource] = useState(initialData.summary);
   const [selectedDate, setSelectedDate] = useState<string | null>(initialData.selectedDate);
@@ -895,6 +915,7 @@ export function PaperDashboard({
     setNextPageOffset(pageEndOffset(initialData.page));
     setLoadError(null);
     setPendingRemoveId(null);
+    setPendingChatId(null);
   }
 
   const loadPaperPage = useCallback(
@@ -1036,10 +1057,43 @@ export function PaperDashboard({
     setPendingRemoveId(null);
   }, []);
 
+  const handleChatCancel = useCallback(() => {
+    setPendingChatId(null);
+  }, []);
+
+  const handleChatClick = useCallback(
+    (paperId: string) => {
+      // Two-stage inplace confirm, mirroring the delete button:
+      //   1st click → enter pending state (button label becomes "chat?")
+      //   2nd click → open the chat page in a new tab and run the original
+      //   onChatStart side-effect (auto-favorite).
+      // Cancel any pending remove on a different row so we don't display
+      // two simultaneous "?" prompts.
+      setPendingRemoveId(null);
+      setPendingChatId((current) => {
+        if (current !== paperId) {
+          return paperId;
+        }
+
+        // Browsers allow window.open inside a user-initiated click handler.
+        // Keep the same noreferrer semantics as the previous <a target="_blank">.
+        window.open(
+          `/papers/${encodeURIComponent(paperId)}/chat`,
+          "_blank",
+          "noreferrer",
+        );
+        addFavorite(paperId);
+        return null;
+      });
+    },
+    [addFavorite],
+  );
+
   const handleRemoveClick = useCallback((paperId: string) => {
     // Two-stage inplace confirm:
     //   1st click → enter pending state (button label becomes "remove?")
     //   2nd click → actually remove the paper from the UI and notify the server.
+    setPendingChatId(null);
     setPendingRemoveId((current) => {
       if (current !== paperId) {
         return paperId;
@@ -1507,6 +1561,14 @@ export function PaperDashboard({
               onSelect={selectFilter}
             />
             <FilterLink
+              active={activeFilter === "sim"}
+              count={countsByTag.sim}
+              filter="sim"
+              icon={<MonitorPlay className="h-4 w-4" aria-hidden="true" />}
+              label="Sim"
+              onSelect={selectFilter}
+            />
+            <FilterLink
               active={activeFilter === "favorites"}
               count={favoritesCount}
               filter="favorites"
@@ -1578,8 +1640,10 @@ export function PaperDashboard({
                 highlighted={focusedPaperId === paper.id}
                 isEditingTags={editingPaperId === paper.id}
                 removePending={pendingRemoveId === paper.id}
+                chatPending={pendingChatId === paper.id}
                 onToggleFavorite={toggleFavorite}
-                onChatStart={addFavorite}
+                onChatClick={handleChatClick}
+                onChatCancel={handleChatCancel}
                 onStartTagEdit={handleStartTagEdit}
                 onCancelTagEdit={handleCancelTagEdit}
                 onTagsChange={handleTagsChange}

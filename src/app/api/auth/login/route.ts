@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     authorizeUrl.searchParams.set("state", state);
 
     const response = NextResponse.redirect(authorizeUrl);
-    setOAuthStateCookie(response, state);
+    setOAuthStateCookie(response, state, request);
     return response;
   } catch (error) {
     return NextResponse.json(
