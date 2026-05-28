@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { updatePaperTags } from "@/lib/arxiv/store";
+import { readAppSettings, updatePaperTags } from "@/lib/arxiv/store";
 import { PAPER_TAGS, type PaperTag } from "@/lib/arxiv/types";
 import { requireAuthSession } from "@/lib/auth/guard";
 
@@ -18,7 +18,7 @@ function decodeRouteId(value: string) {
   }
 }
 
-function parseTags(rawTags: unknown): PaperTag[] | null {
+function parseTags(rawTags: unknown, allowedIds: ReadonlySet<string>): PaperTag[] | null {
   if (!Array.isArray(rawTags)) {
     return null;
   }
@@ -29,7 +29,7 @@ function parseTags(rawTags: unknown): PaperTag[] | null {
       return null;
     }
 
-    if (!(PAPER_TAGS as readonly string[]).includes(tag)) {
+    if (!allowedIds.has(tag)) {
       return null;
     }
 
@@ -57,7 +57,14 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ ok: false, error: "请求体必须是 JSON" }, { status: 400 });
   }
 
-  const tags = parseTags(body.tags);
+  // Build allowed tag set from hardcoded tags + user-defined tags
+  const settings = await readAppSettings(auth.session.user.id);
+  const allowedIds = new Set<string>(PAPER_TAGS as readonly string[]);
+  for (const tc of settings.tags) {
+    allowedIds.add(tc.id);
+  }
+
+  const tags = parseTags(body.tags, allowedIds);
   if (!tags) {
     return NextResponse.json(
       { ok: false, error: "tags 必须是合法 tag 字符串数组" },
