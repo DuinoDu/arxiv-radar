@@ -1,12 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, FileText, Globe2, LogIn, MessageSquare } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   ChatView,
   createRestAdapter,
   type ChatViewLabels,
+  type RenderMessageContent,
 } from "@love-moon/app-sdk/react";
 import { isConductorAppError } from "@love-moon/app-sdk";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
@@ -15,6 +18,7 @@ import {
   TaskStatusBadge,
   type ChatTaskStatus,
 } from "@/components/arxiv/chat/TaskStatusBadge";
+import { ChatOverlay } from "@/components/arxiv/chat/ChatOverlay";
 
 type WorkspaceView = "pdf" | "html" | "chat";
 
@@ -62,6 +66,10 @@ const MAX_AUTO_REBINDS = 3;
 // the UI within ~5 seconds.
 const TASK_STATUS_POLL_MS = 5_000;
 
+const renderMarkdown: RenderMessageContent = (m) => (
+  <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+);
+
 export function PaperChat({ paper, authenticated }: { paper: AnalyzedPaper; authenticated: boolean }) {
   const [taskId, setTaskId] = useState<string | null>(null);
   const [bindError, setBindError] = useState<string | null>(null);
@@ -74,6 +82,9 @@ export function PaperChat({ paper, authenticated }: { paper: AnalyzedPaper; auth
   // MAX_AUTO_REBINDS cap checks; resetting it on manual retry gives the
   // user a fresh budget of self-heal attempts after they intervene.
   const [autoRebinds, setAutoRebinds] = useState(0);
+
+  // Ref for the ChatView wrapper so the overlay can access the message list.
+  const chatWrapperRef = useRef<HTMLDivElement>(null);
 
   // Task lifecycle state for the top-bar status badge.
   const [taskStatus, setTaskStatus] = useState<ChatTaskStatus>("unknown");
@@ -384,17 +395,17 @@ export function PaperChat({ paper, authenticated }: { paper: AnalyzedPaper; auth
             加载中…
           </div>
         ) : (
-          // SDK 0.4.x renders messages itself (no more MessageBubble export);
-          // we let ChatView handle layout & per-message toolbar. Restart is
-          // exposed externally via the TaskStatusBadge below for now until the
-          // chat-migration worktree lands its replacement UI.
-          <ChatView
-            taskId={taskId}
-            adapter={adapter}
-            onError={handleChatError}
-            labels={CHAT_LABELS}
-            className="absolute inset-0"
-          />
+          <div ref={chatWrapperRef} className="absolute inset-0">
+            <ChatView
+              taskId={taskId}
+              adapter={adapter}
+              onError={handleChatError}
+              labels={CHAT_LABELS}
+              renderMessageContent={renderMarkdown}
+              className="h-full"
+            />
+            <ChatOverlay wrapperRef={chatWrapperRef} />
+          </div>
         )}
       </div>
     </section>
