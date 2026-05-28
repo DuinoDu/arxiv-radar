@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@love-moon/app-sdk':
-        specifier: ^0.4.2
-        version: 0.4.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+        specifier: file:/Users/duino/ws/conductor/.conductor/worktrees/e298c8/modules/app-sdk
+        version: file:../../../../conductor/.conductor/worktrees/e298c8/modules/app-sdk(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       cheerio:
         specifier: ^1.2.0
         version: 1.2.0
@@ -363,8 +363,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@love-moon/app-sdk@0.4.2':
-    resolution: {integrity: sha512-6vGX8PQ71x7F+npqPeAp5MLGBjtXPD5QjLDNfSqmAEDRstf24wk7M+NWF7pY7mLMVUOVW2FfdoyAphnyqqHgWQ==}
+  '@love-moon/app-sdk@file:../../../../conductor/.conductor/worktrees/e298c8/modules/app-sdk':
+    resolution: {directory: ../../../../conductor/.conductor/worktrees/e298c8/modules/app-sdk, type: directory}
     peerDependencies:
       react: '>=18.0.0'
       react-dom: '>=18.0.0'
@@ -2737,7 +2737,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@love-moon/app-sdk@0.4.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
+  '@love-moon/app-sdk@file:../../../../conductor/.conductor/worktrees/e298c8/modules/app-sdk(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
     dependencies:
       ws: 8.21.0
       zod: 3.25.76

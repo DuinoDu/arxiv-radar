@@ -221,18 +221,135 @@ summary::-webkit-details-marker {
   background: rgb(255 255 255 / 0.06);
 }
 
-/* ----- Action-sheet slide-up animation ----------------------------------- */
-@keyframes conductor-slide-up {
-  from {
-    transform: translateY(100%);
-  }
-  to {
-    transform: translateY(0);
-  }
+/* ----- Scroll-to-bottom button (SDK native) ------------------------------ */
+.conductor-chat-view .conductor-scroll-to-bottom {
+  background: #ffffff;
+  border-color: #e4e4e7;
+  color: #52525b;
 }
 
-.conductor-action-sheet {
-  animation: conductor-slide-up 0.2s ease-out;
+.conductor-chat-view .conductor-scroll-to-bottom:hover {
+  background: #f4f4f5;
+}
+
+.dark .conductor-chat-view .conductor-scroll-to-bottom {
+  background: #18181b;
+  border-color: #3f3f46;
+  color: #a1a1aa;
+}
+
+.dark .conductor-chat-view .conductor-scroll-to-bottom:hover {
+  background: #27272a;
+}
+
+/* ----- Question anchor navigation (SDK native) --------------------------- */
+.conductor-chat-view .conductor-question-nav__dot {
+  background: rgb(161 161 170);
+}
+
+.conductor-chat-view .conductor-question-nav__btn:hover .conductor-question-nav__dot {
+  background: rgb(82 82 91);
+}
+
+.conductor-chat-view .conductor-question-nav__dot--active {
+  background: var(--accent);
+}
+
+.conductor-chat-view .conductor-question-nav__sep {
+  background: rgb(212 212 216 / 0.5);
+}
+
+.dark .conductor-chat-view .conductor-question-nav__dot {
+  background: rgb(82 82 91);
+}
+
+.dark .conductor-chat-view .conductor-question-nav__btn:hover .conductor-question-nav__dot {
+  background: rgb(161 161 170);
+}
+
+.dark .conductor-chat-view .conductor-question-nav__sep {
+  background: rgb(63 63 70 / 0.5);
+}
+
+/* ----- Bubble action menu (SDK native) ----------------------------------- */
+.conductor-chat-view .conductor-bubble-menu-backdrop {
+  background: rgb(0 0 0 / 0.25);
+}
+
+.dark .conductor-chat-view .conductor-bubble-menu-backdrop {
+  background: rgb(0 0 0 / 0.5);
+}
+
+.conductor-chat-view .conductor-bubble-menu-sheet {
+  background: #ffffff;
+  border-color: #e4e4e7;
+}
+
+.dark .conductor-chat-view .conductor-bubble-menu-sheet {
+  background: #18181b;
+  border-color: #3f3f46;
+}
+
+.conductor-chat-view .conductor-bubble-menu-handle {
+  background: #d4d4d8;
+}
+
+.dark .conductor-chat-view .conductor-bubble-menu-handle {
+  background: #3f3f46;
+}
+
+.conductor-chat-view .conductor-bubble-menu-item {
+  background: #f4f4f5;
+  border-color: #e4e4e7;
+  color: #18181b;
+}
+
+.conductor-chat-view .conductor-bubble-menu-item:hover {
+  background: #e4e4e7;
+}
+
+.dark .conductor-chat-view .conductor-bubble-menu-item {
+  background: #27272a;
+  border-color: #3f3f46;
+  color: #fafafa;
+}
+
+.dark .conductor-chat-view .conductor-bubble-menu-item:hover {
+  background: #3f3f46;
+}
+
+/* ----- Bubble group: full-width (match existing layout) ------------------ */
+.conductor-chat-view .conductor-bubble-group {
+  max-width: 100%;
+}
+
+.conductor-chat-view[data-layout="mobile"] .conductor-bubble-group,
+.conductor-chat-view[data-layout="desktop"] .conductor-bubble-group {
+  max-width: 100%;
+}
+
+/* ----- Bubble timestamp -------------------------------------------------- */
+.conductor-chat-view .conductor-bubble__time {
+  color: rgb(161 161 170);
+}
+
+.dark .conductor-chat-view .conductor-bubble__time {
+  color: rgb(82 82 91);
+}
+
+/* ----- Empty state ------------------------------------------------------- */
+.conductor-chat-view .conductor-empty__title {
+  color: #18181b;
+}
+
+.dark .conductor-chat-view .conductor-empty__title {
+  color: #fafafa;
+}
+
+/* ----- Load-earlier button (dark mode) ----------------------------------- */
+.dark .conductor-chat-view .conductor-load-earlier button {
+  color: rgb(161 161 170);
+  border-color: #3f3f46;
 }
 
 /* ----- Markdown inside chat bubbles --------------------------------------- */

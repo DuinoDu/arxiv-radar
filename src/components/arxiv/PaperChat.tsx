@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, FileText, Globe2, LogIn, MessageSquare } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -18,7 +18,6 @@ import {
   TaskStatusBadge,
   type ChatTaskStatus,
 } from "@/components/arxiv/chat/TaskStatusBadge";
-import { ChatOverlay } from "@/components/arxiv/chat/ChatOverlay";
 
 type WorkspaceView = "pdf" | "html" | "chat";
 
@@ -41,6 +40,14 @@ const CHAT_LABELS: ChatViewLabels = {
   statusDone: "完成",
   restart: "重启",
   loadEarlier: "加载更早消息",
+  copy: "复制",
+  copied: "已复制",
+  resend: "重新发送",
+  scrollToBottom: "滚动到底部",
+  jumpToQuestion: "跳转到问题",
+  emptyTitle: "开始新对话",
+  emptyBody: "向 AI 提问关于这篇论文的任何问题",
+  restartPending: "重新开始",
 };
 
 type BindResponse = {
@@ -82,9 +89,6 @@ export function PaperChat({ paper, authenticated }: { paper: AnalyzedPaper; auth
   // MAX_AUTO_REBINDS cap checks; resetting it on manual retry gives the
   // user a fresh budget of self-heal attempts after they intervene.
   const [autoRebinds, setAutoRebinds] = useState(0);
-
-  // Ref for the ChatView wrapper so the overlay can access the message list.
-  const chatWrapperRef = useRef<HTMLDivElement>(null);
 
   // Task lifecycle state for the top-bar status badge.
   const [taskStatus, setTaskStatus] = useState<ChatTaskStatus>("unknown");
@@ -395,17 +399,14 @@ export function PaperChat({ paper, authenticated }: { paper: AnalyzedPaper; auth
             加载中…
           </div>
         ) : (
-          <div ref={chatWrapperRef} className="absolute inset-0">
-            <ChatView
+          <ChatView
               taskId={taskId}
               adapter={adapter}
               onError={handleChatError}
               labels={CHAT_LABELS}
               renderMessageContent={renderMarkdown}
-              className="h-full"
+              className="absolute inset-0 h-full"
             />
-            <ChatOverlay wrapperRef={chatWrapperRef} />
-          </div>
         )}
       </div>
     </section>
