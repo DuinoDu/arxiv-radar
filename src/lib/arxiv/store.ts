@@ -416,7 +416,7 @@ async function readPapersForUser(userId: string) {
         p.full_text_url,
         p.full_text_error,
         p.full_text_analyzed_at,
-        p.github_url,
+        COALESCE(up.github_url_override, p.github_url) AS github_url,
         up.summary,
         up.hypothesis,
         up.method,
@@ -1088,6 +1088,19 @@ export async function markPaperRemoved(userId: string, paperId: string): Promise
       WHERE user_id = $1 AND paper_id = $2 AND removed = false
     `,
     [id, paperId],
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function updatePaperGithubUrl(userId: string, paperId: string, githubUrl: string): Promise<boolean> {
+  const id = normalizedUserId(userId);
+  const result = await query(
+    `
+      UPDATE user_papers
+      SET github_url_override = $1, updated_at = now()
+      WHERE user_id = $2 AND paper_id = $3
+    `,
+    [githubUrl, id, paperId],
   );
   return (result.rowCount ?? 0) > 0;
 }

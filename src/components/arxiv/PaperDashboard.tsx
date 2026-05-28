@@ -576,6 +576,126 @@ function paperCardDomId(id: string) {
   return `paper-card-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
 }
 
+const LONG_PRESS_MS = 500;
+
+function GithubInputButton({
+  paperId,
+  paperTitle,
+  onSubmit,
+}: {
+  paperId: string;
+  paperTitle: string;
+  onSubmit: (id: string, githubUrl: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState("");
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const clearTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  const handlePressStart = useCallback(() => {
+    clearTimer();
+    timerRef.current = setTimeout(() => {
+      setOpen(true);
+      timerRef.current = null;
+    }, LONG_PRESS_MS);
+  }, [clearTimer]);
+
+  const handlePressEnd = useCallback(() => {
+    clearTimer();
+  }, [clearTimer]);
+
+  useEffect(() => {
+    if (open && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      if (containerRef.current?.contains(event.target as Node)) return;
+      setOpen(false);
+      setValue("");
+    }
+
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+        setValue("");
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [open]);
+
+  useEffect(() => clearTimer, [clearTimer]);
+
+  function handleSubmit() {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    onSubmit(paperId, trimmed);
+    setOpen(false);
+    setValue("");
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        title="未找到 GitHub 链接（长按手动输入）"
+        aria-label={`${paperTitle} 未找到 GitHub 链接（长按手动输入）`}
+        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 bg-zinc-100 text-zinc-400 transition select-none hover:bg-zinc-50 hover:text-zinc-500 active:bg-zinc-200 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-400 dark:active:bg-zinc-800"
+        onMouseDown={handlePressStart}
+        onMouseUp={handlePressEnd}
+        onMouseLeave={handlePressEnd}
+        onTouchStart={handlePressStart}
+        onTouchEnd={handlePressEnd}
+        onTouchCancel={handlePressEnd}
+        onContextMenu={(e) => e.preventDefault()}
+      >
+        <GithubIcon className="h-4 w-4" />
+      </button>
+      {open ? (
+        <div className="absolute right-0 top-full z-20 mt-1 flex items-center gap-1 rounded-md border border-zinc-200 bg-white p-1.5 shadow-lg dark:border-zinc-800 dark:bg-zinc-950">
+          <input
+            ref={inputRef}
+            type="url"
+            placeholder="github.com/owner/repo"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleSubmit();
+            }}
+            className="h-7 w-56 rounded border border-zinc-200 bg-white px-2 text-xs text-zinc-800 placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:placeholder:text-zinc-600 dark:focus:border-zinc-500"
+          />
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={!value.trim()}
+            className="inline-flex h-7 items-center rounded bg-zinc-900 px-2 text-xs font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+          >
+            确定
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function PaperRow({
   paper,
   timeZone,
@@ -596,6 +716,7 @@ function PaperRow({
   onTagsChange,
   onRemoveClick,
   onRemoveCancel,
+  onGithubUrlChange,
 }: {
   paper: AnalyzedPaper;
   timeZone: string;
@@ -616,6 +737,7 @@ function PaperRow({
   onTagsChange: (id: string, tags: PaperTag[]) => void;
   onRemoveClick: (id: string) => void;
   onRemoveCancel: () => void;
+  onGithubUrlChange: (id: string, githubUrl: string) => void;
 }) {
   const detailItems = [
     ["假设", paper.hypothesis],
@@ -770,15 +892,11 @@ function PaperRow({
               <GithubIcon className="h-4 w-4" />
             </a>
           ) : (
-            <button
-              type="button"
-              disabled
-              title="未找到 GitHub 链接"
-              aria-label={`${paper.title} 未找到 GitHub 链接`}
-              className="inline-flex h-9 w-9 cursor-not-allowed items-center justify-center rounded-md border border-zinc-200 bg-zinc-100 text-zinc-400 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-600"
-            >
-              <GithubIcon className="h-4 w-4" />
-            </button>
+            <GithubInputButton
+              paperId={paper.id}
+              paperTitle={paper.title}
+              onSubmit={onGithubUrlChange}
+            />
           )}
           {removePending ? (
             <button
@@ -1089,6 +1207,48 @@ export function PaperDashboard({
             ),
           );
         }
+      });
+  }, []);
+
+  const handleGithubUrlChange = useCallback((paperId: string, githubUrl: string) => {
+    // Optimistically update the paper's githubUrl in local state.
+    setPapers((prev) =>
+      prev.map((paper) =>
+        paper.id === paperId ? { ...paper, githubUrl } : paper,
+      ),
+    );
+
+    void fetch(`/api/papers/${encodeURIComponent(paperId)}/github`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ githubUrl }),
+    })
+      .then(async (response) => {
+        const payload = (await response.json().catch(() => ({ ok: false }))) as {
+          ok?: boolean;
+          githubUrl?: string;
+          error?: string;
+        };
+        if (!response.ok || !payload?.ok) {
+          throw new Error(payload?.error || "更新 GitHub 链接失败");
+        }
+        // Update with the server-normalized URL.
+        if (payload.githubUrl) {
+          setPapers((prev) =>
+            prev.map((paper) =>
+              paper.id === paperId ? { ...paper, githubUrl: payload.githubUrl } : paper,
+            ),
+          );
+        }
+      })
+      .catch((error) => {
+        console.error("update paper github url failed", error);
+        // Roll back the optimistic update.
+        setPapers((prev) =>
+          prev.map((paper) =>
+            paper.id === paperId ? { ...paper, githubUrl: undefined } : paper,
+          ),
+        );
       });
   }, []);
 
@@ -1630,6 +1790,7 @@ export function PaperDashboard({
                 onTagsChange={handleTagsChange}
                 onRemoveClick={handleRemoveClick}
                 onRemoveCancel={handleRemoveCancel}
+                onGithubUrlChange={handleGithubUrlChange}
               />
             ))
           ) : loadingMore ? (
