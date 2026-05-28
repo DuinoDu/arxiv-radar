@@ -109,6 +109,9 @@ function scoreGithubContext(value: string) {
   return score;
 }
 
+const PROJECT_PAGE_REGEX =
+  /\b(project\s*page|project\s*homepage|project\s*website|homepage|project\s*site)\b/i;
+
 function extractGithubUrlFromHtml(html: string) {
   const $ = cheerio.load(html);
   const candidates: Array<{ score: number; url: string }> = [];
@@ -144,6 +147,131 @@ function extractGithubUrlFromHtml(html: string) {
   });
 
   return candidates.sort((a, b) => b.score - a.score)[0]?.url;
+}
+
+function extractProjectPageUrls(html: string): string[] {
+  const $ = cheerio.load(html);
+  const urls: string[] = [];
+  const paperRoot = $("article").first().length
+    ? $("article").first()
+    : $(".ltx_page_content").first().length
+      ? $(".ltx_page_content").first()
+      : $(".ltx_document").first().length
+        ? $(".ltx_document").first()
+        : $("body");
+
+  paperRoot
+    .find("script, style, noscript, svg, nav, header, footer, form, button, .ltx_bibliography, .ltx_bibitem, .ltx_biblist")
+    .remove();
+
+  paperRoot.find("a[href]").each((_, element) => {
+    const href = $(element).attr("href") ?? "";
+    if (!href || /^#/.test(href) || /arxiv\.org/i.test(href) || /github\.com/i.test(href)) {
+      return;
+    }
+
+    const text = $(element).text();
+    const parentText = $(element).parent().text();
+    const context = `${text} ${parentText}`;
+
+    if (PROJECT_PAGE_REGEX.test(context) && /^https?:\/\//i.test(href)) {
+      urls.push(href);
+    }
+  });
+
+  return urls;
+}
+
+const BLOCKED_HOSTNAME_REGEX =
+  /^(?:localhost|127\.\d+\.\d+\.\d+|0\.0\.0\.0|\[.*\]|metadata\.google\.internal)$/i;
+
+function isSafeExternalUrl(raw: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return false;
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return false;
+  }
+
+  const hostname = parsed.hostname;
+  if (BLOCKED_HOSTNAME_REGEX.test(hostname)) {
+    return false;
+  }
+
+  // Block private/reserved IPv4 ranges and link-local addresses.
+  if (
+    /^10\.\d+\.\d+\.\d+$/.test(hostname) ||
+    /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/.test(hostname) ||
+    /^192\.168\.\d+\.\d+$/.test(hostname) ||
+    /^169\.254\.\d+\.\d+$/.test(hostname)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function extractGithubUrlFromPageHtml(html: string): string | undefined {
+  const $ = cheerio.load(html);
+  $("script, style, noscript, svg, nav, footer").remove();
+
+  const candidates: Array<{ score: number; url: string }> = [];
+  $("a[href]").each((_, element) => {
+    const href = $(element).attr("href");
+    const url = extractGithubUrl(href);
+    if (!url) return;
+    const context = normalizePaperText(`${$(element).text()} ${$(element).parent().text()}`);
+    candidates.push({ score: scoreGithubContext(context), url });
+  });
+
+  return candidates.sort((a, b) => b.score - a.score)[0]?.url;
+}
+
+async function fetchGithubUrlFromProjectPage(projectPageUrl: string): Promise<string | undefined> {
+  if (!isSafeExternalUrl(projectPageUrl)) {
+    return undefined;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), getFullTextTimeoutMs());
+
+  try {
+    let response = await fetch(projectPageUrl, {
+      headers: { "User-Agent": USER_AGENT, Accept: "text/html,*/*;q=0.8" },
+      cache: "force-cache",
+      signal: controller.signal,
+      redirect: "manual",
+    });
+
+    // If the response is a redirect, validate the target before following.
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      if (!location || !isSafeExternalUrl(new URL(location, projectPageUrl).href)) {
+        return undefined;
+      }
+
+      response = await fetch(new URL(location, projectPageUrl).href, {
+        headers: { "User-Agent": USER_AGENT, Accept: "text/html,*/*;q=0.8" },
+        cache: "force-cache",
+        signal: controller.signal,
+        redirect: "manual",
+      });
+    }
+
+    if (!response.ok) {
+      return undefined;
+    }
+
+    return extractGithubUrlFromPageHtml(await response.text());
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export function extractPaperHtmlText(html: string) {
@@ -202,7 +330,19 @@ export async function fetchPaperFullText(paper: Pick<ArxivArticle, "id">): Promi
 
     const html = await response.text();
     const text = compactText(extractPaperHtmlText(html), getFullTextMaxChars());
-    const githubUrl = extractGithubUrlFromHtml(html);
+    let githubUrl = extractGithubUrlFromHtml(html);
+
+    // If no GitHub URL found directly, try project homepages linked from the paper.
+    if (!githubUrl) {
+      const projectPages = extractProjectPageUrls(html);
+      for (const pageUrl of projectPages.slice(0, 3)) {
+        const found = await fetchGithubUrlFromProjectPage(pageUrl);
+        if (found) {
+          githubUrl = found;
+          break;
+        }
+      }
+    }
 
     if (!text) {
       return {
