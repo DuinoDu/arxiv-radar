@@ -220,3 +220,17 @@ summary::-webkit-details-marker {
   .conductor-button:not(.conductor-button--send):not(.conductor-button--interrupt):hover {
   background: rgb(255 255 255 / 0.06);
 }
+
+/* ----- Enhanced ChatView: action-sheet slide-up animation -------------- */
+@keyframes conductor-slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.conductor-action-sheet {
+  animation: conductor-slide-up 0.2s ease-out;
+}
