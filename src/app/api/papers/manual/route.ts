@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { analyzeArticle } from "@/lib/arxiv/analyzer";
 import { fetchArticleMetadata, normalizeArxivId } from "@/lib/arxiv/fetcher";
-import { addManualPaper, readArxivState } from "@/lib/arxiv/store";
-import { PAPER_TAGS, type AnalyzedPaper, type PaperTag } from "@/lib/arxiv/types";
+import { addManualPaper, readAppSettings, readArxivState } from "@/lib/arxiv/store";
+import { PAPER_TAGS, type AnalyzedPaper, type AppSettings, type PaperTag } from "@/lib/arxiv/types";
 import { requireAuthSession } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
@@ -15,15 +15,23 @@ interface ManualPaperBody {
   force?: boolean;
 }
 
-function parseTags(rawTags: unknown): PaperTag[] {
+function allowedTagIds(settings: AppSettings) {
+  const ids = new Set<string>(PAPER_TAGS as readonly string[]);
+  for (const tag of settings.tags) {
+    ids.add(tag.id);
+  }
+  return ids;
+}
+
+function parseTags(rawTags: unknown, allowedIds: ReadonlySet<string>): PaperTag[] {
   if (!Array.isArray(rawTags)) {
     return [];
   }
 
   const validTags = new Set<PaperTag>();
   for (const tag of rawTags) {
-    if (typeof tag === "string" && (PAPER_TAGS as readonly string[]).includes(tag)) {
-      validTags.add(tag as PaperTag);
+    if (typeof tag === "string" && allowedIds.has(tag)) {
+      validTags.add(tag);
     }
   }
 
@@ -85,9 +93,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const manualTags = parseTags(payload.tags);
-
   try {
+    const settings = await readAppSettings(auth.session.user.id);
+    const manualTags = parseTags(payload.tags, allowedTagIds(settings));
+
     if (!payload.force) {
       const state = await readArxivState(auth.session.user.id);
       if (state.papers.some((paper) => paper.id === arxivId)) {

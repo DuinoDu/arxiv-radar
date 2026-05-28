@@ -1068,6 +1068,16 @@ export function PaperDashboard({
         if (!response.ok || !payload?.ok) {
           throw new Error(payload?.error || "更新标签失败");
         }
+        if (Array.isArray(payload.tags)) {
+          const savedTags = payload.tags.filter(
+            (tag: unknown): tag is PaperTag => typeof tag === "string",
+          );
+          setPapers((prev) =>
+            prev.map((paper) =>
+              paper.id === paperId ? { ...paper, tags: savedTags } : paper,
+            ),
+          );
+        }
       })
       .catch((error) => {
         console.error("update paper tags failed", error);

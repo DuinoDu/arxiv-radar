@@ -3,7 +3,6 @@ import { createEnvAppSettings, normalizeAppSettings } from "@/lib/app-settings";
 import type { AuthUser } from "@/lib/auth/session";
 import { query, transaction } from "@/lib/db/postgres";
 import {
-  PAPER_TAGS,
   type AnalysisRun,
   type AnalyzedPaper,
   type AppSettings,
@@ -144,7 +143,8 @@ function fullTextStatus(value: string | null): FullTextStatus | undefined {
 }
 
 function paperTag(value: string): PaperTag | null {
-  return (PAPER_TAGS as readonly string[]).includes(value) ? (value as PaperTag) : null;
+  const tag = value.trim();
+  return tag ? tag : null;
 }
 
 function paperTagSource(value: string | undefined | null): PaperTagSource {
@@ -154,9 +154,19 @@ function paperTagSource(value: string | undefined | null): PaperTagSource {
   return "abstract";
 }
 
-function normalizeTagList(tags: PaperTag[]) {
-  const requested = new Set(tags);
-  return PAPER_TAGS.filter((tag) => requested.has(tag));
+function normalizeTagList(tags: readonly PaperTag[], allowedTags?: ReadonlySet<string>) {
+  const seen = new Set<string>();
+  const result: PaperTag[] = [];
+
+  for (const rawTag of tags) {
+    const tag = paperTag(rawTag);
+    if (!tag || seen.has(tag)) continue;
+    if (allowedTags && !allowedTags.has(tag)) continue;
+    seen.add(tag);
+    result.push(tag);
+  }
+
+  return result;
 }
 
 function settingsWithInitialConductorBaseUrl(options: UserOptions = {}) {
@@ -342,12 +352,16 @@ function paperFromRow(row: PaperRow, tagRows: TagRow[] = []): AnalyzedPaper {
   const tagConfidence: Partial<Record<PaperTag, number>> = {};
   const tagSource: Partial<Record<PaperTag, PaperTagSource>> = {};
   const tagSet = new Set<PaperTag>();
+  const tags: PaperTag[] = [];
 
   for (const tagRow of tagRows) {
     const tag = paperTag(tagRow.tag);
     if (!tag) continue;
 
-    tagSet.add(tag);
+    if (!tagSet.has(tag)) {
+      tagSet.add(tag);
+      tags.push(tag);
+    }
     if (tagRow.evidence) tagEvidence[tag] = tagRow.evidence;
     if (typeof tagRow.confidence === "number") tagConfidence[tag] = tagRow.confidence;
     tagSource[tag] = paperTagSource(tagRow.source);
@@ -368,7 +382,7 @@ function paperFromRow(row: PaperRow, tagRows: TagRow[] = []): AnalyzedPaper {
     method: row.method,
     problem: row.problem,
     conclusion: row.conclusion,
-    tags: PAPER_TAGS.filter((tag) => tagSet.has(tag)),
+    tags,
     tagEvidence,
     tagConfidence,
     tagSource,
@@ -828,7 +842,8 @@ export async function listCronUsers(): Promise<CronUser[]> {
         conductor_daemon_host,
         conductor_workspace_path,
         conductor_app_name,
-        conductor_backend_type
+        conductor_backend_type,
+        tags
       FROM user_settings
       WHERE cron_enabled = true
       ORDER BY user_id ASC
@@ -1003,8 +1018,14 @@ export async function removeFavoriteId(userId: string, paperId: string) {
   );
 }
 
-export async function updatePaperTags(userId: string, paperId: string, tags: PaperTag[]) {
+export async function updatePaperTags(
+  userId: string,
+  paperId: string,
+  tags: PaperTag[],
+  allowedTags?: ReadonlySet<string>,
+): Promise<PaperTag[] | null> {
   const id = normalizedUserId(userId);
+  let savedTags: PaperTag[] | null = null;
   await transaction(async (client) => {
     await ensureUser(id, {}, client);
     const existing = await client.query<TagRow>(
@@ -1031,7 +1052,7 @@ export async function updatePaperTags(userId: string, paperId: string, tags: Pap
       if (tag) existingByTag.set(tag, row);
     }
 
-    const nextTags = normalizeTagList(tags);
+    const nextTags = normalizeTagList(tags, allowedTags);
     await replacePaperTags(client, id, paperId, {
       tags: nextTags,
       tagEvidence: Object.fromEntries(
@@ -1053,7 +1074,9 @@ export async function updatePaperTags(userId: string, paperId: string, tags: Pap
         ]),
       ),
     });
+    savedTags = nextTags;
   });
+  return savedTags;
 }
 
 export async function markPaperRemoved(userId: string, paperId: string): Promise<boolean> {

@@ -73,8 +73,14 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   }
 
   try {
-    await updatePaperTags(auth.session.user.id, paperId, tags);
-    return NextResponse.json({ ok: true, id: paperId, tags });
+    const savedTags = await updatePaperTags(auth.session.user.id, paperId, tags, allowedIds);
+    if (!savedTags) {
+      return NextResponse.json(
+        { ok: false, error: "paper 不存在" },
+        { status: 404 },
+      );
+    }
+    return NextResponse.json({ ok: true, id: paperId, tags: savedTags });
   } catch (error) {
     return NextResponse.json(
       { ok: false, error: (error as Error).message },

@@ -72,6 +72,9 @@ function settingsFromState(state) {
       appName: conductor.appName || process.env.CONDUCTOR_APP_NAME || "arxiv-radar",
       backendType: conductor.backendType || process.env.CONDUCTOR_BACKEND_TYPE || "",
     },
+    tags: asArray(settings.tags).filter(
+      (tag) => tag && typeof tag.id === "string" && typeof tag.label === "string",
+    ),
   };
 }
 
@@ -107,9 +110,10 @@ async function saveSettings(client, userId, settings) {
         conductor_daemon_host,
         conductor_workspace_path,
         conductor_app_name,
-        conductor_backend_type
+        conductor_backend_type,
+        tags
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
       ON CONFLICT (user_id) DO UPDATE SET
         arxiv_daily_url = EXCLUDED.arxiv_daily_url,
         cron_enabled = EXCLUDED.cron_enabled,
@@ -120,6 +124,7 @@ async function saveSettings(client, userId, settings) {
         conductor_workspace_path = EXCLUDED.conductor_workspace_path,
         conductor_app_name = EXCLUDED.conductor_app_name,
         conductor_backend_type = EXCLUDED.conductor_backend_type,
+        tags = EXCLUDED.tags,
         updated_at = now()
     `,
     [
@@ -133,6 +138,7 @@ async function saveSettings(client, userId, settings) {
       settings.conductor.workspacePath,
       settings.conductor.appName,
       settings.conductor.backendType,
+      JSON.stringify(settings.tags),
     ],
   );
 }
