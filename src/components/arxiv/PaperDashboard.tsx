@@ -658,7 +658,7 @@ function GithubInputButton({
             disabled={!value.trim()}
             className="inline-flex h-7 items-center rounded bg-zinc-900 px-2 text-xs font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
           >
-            ✅
+            ✓
           </button>
         </div>
       ) : null}
