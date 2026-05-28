@@ -4,11 +4,11 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, FileText, Globe2, LogIn, MessageSquare } from "lucide-react";
 import {
+  ChatView,
   createRestAdapter,
   type ChatViewLabels,
 } from "@love-moon/app-sdk/react";
 import { isConductorAppError } from "@love-moon/app-sdk";
-import { EnhancedChatView } from "@/components/arxiv/chat/EnhancedChatView";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import type { AnalyzedPaper } from "@/lib/arxiv/types";
 import {
@@ -384,7 +384,11 @@ export function PaperChat({ paper, authenticated }: { paper: AnalyzedPaper; auth
             加载中…
           </div>
         ) : (
-          <EnhancedChatView
+          // SDK 0.4.x renders messages itself (no more MessageBubble export);
+          // we let ChatView handle layout & per-message toolbar. Restart is
+          // exposed externally via the TaskStatusBadge below for now until the
+          // chat-migration worktree lands its replacement UI.
+          <ChatView
             taskId={taskId}
             adapter={adapter}
             onError={handleChatError}
