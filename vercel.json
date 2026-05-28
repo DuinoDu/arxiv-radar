@@ -1,8 +1,9 @@
 {
+  "installCommand": "npm install",
   "crons": [
     {
       "path": "/api/cron/arxiv",
-      "schedule": "0 * * * *"
+      "schedule": "0 2 * * *"
     }
   ]
 }

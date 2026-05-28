@@ -658,13 +658,12 @@ function GithubInputButton({
         type="button"
         title="未找到 GitHub 链接（长按手动输入）"
         aria-label={`${paperTitle} 未找到 GitHub 链接（长按手动输入）`}
-        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 bg-zinc-100 text-zinc-400 transition select-none hover:bg-zinc-50 hover:text-zinc-500 active:bg-zinc-200 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-400 dark:active:bg-zinc-800"
-        onMouseDown={handlePressStart}
-        onMouseUp={handlePressEnd}
-        onMouseLeave={handlePressEnd}
-        onTouchStart={handlePressStart}
-        onTouchEnd={handlePressEnd}
-        onTouchCancel={handlePressEnd}
+        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 bg-zinc-100 text-zinc-400 transition touch-none select-none hover:bg-zinc-50 hover:text-zinc-500 active:bg-zinc-200 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-400 dark:active:bg-zinc-800"
+        style={{ WebkitTouchCallout: "none" }}
+        onPointerDown={handlePressStart}
+        onPointerUp={handlePressEnd}
+        onPointerLeave={handlePressEnd}
+        onPointerCancel={handlePressEnd}
         onContextMenu={(e) => e.preventDefault()}
       >
         <GithubIcon className="h-4 w-4" />
