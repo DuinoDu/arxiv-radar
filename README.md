@@ -1,138 +1,92 @@
+<div align="center">
+
 # arxiv-radar
 
-每天分析 `https://arxiv.org/list/cs.RO/recent?skip=0&show=100` 的机器人论文，并按 Conductor 登录用户保存：
+**Your daily AI-powered radar for robotics research.**
 
-- 论文列表、分析结果、已处理 arXiv ID、收藏和隐藏状态
-- 用户自己的 tag 标注
-- 用户自己的配置和自动拉取计划
-- 用户自己的 Conductor paper chat task binding
+Auto-fetches new arXiv papers every day, analyzes them with an AI, auto-tags the topics you care about, and lets you chat with any paper. 
 
-未登录时主页只显示 Conductor 登录入口，不读取或展示具体 tag / paper card 信息。
+And most important, it is FREE.
 
-## 环境变量
+[**Website → arxiv-radar.vercel.app**](https://arxiv-radar.vercel.app/)
 
-复制 `.env.example` 为 `.env.local`，填入真实 key：
+[![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org/)
+[![React](https://img.shields.io/badge/React-19-149eca?logo=react)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6?logo=typescript)](https://www.typescriptlang.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Deploy on Vercel](https://img.shields.io/badge/Deploy-Vercel-black?logo=vercel)](https://vercel.com/)
 
-```bash
-OPENAI_URL=https://neolink.com/api/v1
-OPENAI_API_KEY=...
-OPENAI_MODEL=gpt-4o-mini
-DATABASE_URL=postgresql://user:password@localhost:5432/arxiv_radar
-```
+</div>
 
-Conductor SSO 登录需要在 Conductor 侧注册 `arxiv-radar` client，并确保
-`redirect_uris` 包含 `${APP_URL}/api/auth/callback`。arxiv-radar 侧配置：
+---
 
-```bash
-APP_URL=http://localhost:3000
-CONDUCTOR_BASE_URL=https://conductor-ai.top
-CONDUCTOR_SSO_CLIENT_ID=arxiv-radar
-CONDUCTOR_SSO_CLIENT_SECRET=...
-ARXIV_AUTH_SECRET=...
-```
+## Features
 
-`CONDUCTOR_SSO_CLIENT_SECRET` 必须与 Conductor 侧注册的 client secret 一致；
-`ARXIV_AUTH_SECRET` 用于加密 arxiv-radar 自己的 HttpOnly session cookie。登录完成后，
-聊天 BFF 会使用该用户换取的 Conductor token；每位用户的论文聊天 task 独立保存，
-不会复用其他用户的任务。
+- **Daily auto-fetch** — pulls the latest cs.RO papers on a per-user schedule.
+- **LLM analysis** — one-sentence summary, hypothesis, method, problem, and conclusion for every paper.
+- **Smart auto-tagging** — labels papers across topics like VLA, world models, egocentric, teleop, SLAM, UMI, sim, SO-101 and VR, with evidence quotes.
+- **Chat with papers** — ask questions about any paper, backed by per-user Conductor chat tasks.
+- **Personal workspace** — favorites, hide, custom tags, and detected GitHub links, all scoped to your account.
+- **PWA** — installable, works great on mobile.
+- **Multi-user** — Conductor SSO login; every user gets isolated papers, tags, settings, and schedules in Postgres.
 
-创建 chat task 仍需配置共享的运行位置：
+## Quick Start
 
 ```bash
-CONDUCTOR_DAEMON_HOST=...
-CONDUCTOR_WORKSPACE_PATH=...
-CONDUCTOR_APP_NAME=arxiv-radar
-CONDUCTOR_BACKEND_TYPE=
-```
-
-常用可选变量：
-
-```bash
-APP_TIME_ZONE=Asia/Shanghai
-ARXIV_DAILY_URL=https://arxiv.org/list/cs.RO/recent?skip=0&show=100
-ARXIV_AUTO_FETCH_ENABLED=1
-ARXIV_LIMIT=100
-ARXIV_RUN_HOUR=2
-ARXIV_RUN_MINUTE=0
-ARXIV_WORKER_POLL_MS=300000
-OPENAI_CONCURRENCY=3
-CRON_SECRET=...
-MAX_STORED_PAPERS=800
-```
-
-## 数据库
-
-运行 migration：
-
-```bash
+# 1. Install
 npm install
+
+# 2. Configure — copy and fill in your keys
+cp .env.example .env.local
+
+# 3. Run migrations
 npm run db:migrate
+
+# 4. Start
+npm run dev   # → http://localhost:3000
 ```
 
-如果需要把旧的 `data/arxiv-state.json` 导入到某个 Conductor 用户下：
+Sign in via Conductor SSO, then open the gear menu to set your fetch URL, daily schedule, and AI backend.
+
+## Configuration
+
+Set these in `.env.local` (see `.env.example` for the full list):
+
+| Variable | Description |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `OPENAI_URL` / `OPENAI_API_KEY` / `OPENAI_MODEL` | LLM endpoint used for analysis |
+| `APP_URL` | This app's public URL |
+| `CONDUCTOR_BASE_URL` | Conductor SSO base URL |
+| `CONDUCTOR_SSO_CLIENT_ID` / `CONDUCTOR_SSO_CLIENT_SECRET` | Conductor SSO client credentials |
+| `ARXIV_AUTH_SECRET` | Secret for encrypting the session cookie |
+| `CRON_SECRET` | Bearer token guarding the cron endpoint (optional) |
+
+> Register an `arxiv-radar` client on Conductor with `${APP_URL}/api/auth/callback` in its `redirect_uris`.
+
+## Scheduled Fetching
+
+The app exposes a cron endpoint that runs each user's analysis at their configured time:
 
 ```bash
-ARXIV_USER_ID=<conductor-user-id> npm run db:import-json
+GET  /api/cron/arxiv                 # auto run for all users (add Authorization: Bearer $CRON_SECRET)
+POST /api/cron/arxiv?manual=1        # manual run for the logged-in user
+npm run cron                         # trigger the auto cron once locally
+npm run worker                       # local worker, polls every 5 min
 ```
 
-也可以显式指定文件：
+On Vercel, `vercel.json` schedules `*/5 * * * *`; actual run times come from each user's settings and `APP_TIME_ZONE`.
 
-```bash
-npm run db:import-json -- --user-id <conductor-user-id> --state data/arxiv-state.json
-```
-
-运行时状态不再使用本地 JSON 或 Vercel Blob；所有配置、tag、paper list、收藏、运行记录和聊天 task binding 都按 `user_id` 存在 PostgreSQL。
-
-## 本地运行
-
-```bash
-npm run dev
-```
-
-打开 `http://localhost:3000`，先通过 Conductor 登录。登录后顶栏齿轮按钮可打开配置 popup，保存当前用户的：
-
-- arxiv daily 拉取链接
-- 每天自动拉取时间和自动拉取开关
-- Conductor daemon、workspace、app name、AI backend
-
-## 定时任务
-
-应用提供 cron API：
-
-```bash
-GET /api/cron/arxiv
-POST /api/cron/arxiv?manual=1
-```
-
-自动 cron 使用 `GET /api/cron/arxiv`，会遍历所有开启自动拉取的用户，并按每个用户自己的时间设置判断是否执行。如果配置了 `CRON_SECRET`，自动请求需要带：
-
-```bash
-Authorization: Bearer $CRON_SECRET
-```
-
-手动触发需要当前浏览器已登录，执行当前用户的分析。
-
-本地一次性触发自动 cron：
-
-```bash
-npm run cron
-```
-
-本地常驻 worker 每 5 分钟请求一次自动 cron API：
-
-```bash
-npm run worker
-```
-
-Vercel 部署时，`vercel.json` 已配置 `*/5 * * * *`。实际执行时间由每个用户的配置决定，时区来自 `APP_TIME_ZONE`。
-
-## 部署到 Vercel
+## Deploy to Vercel
 
 ```bash
 npm run lint
 npm run build
-vercel
 vercel --prod
 ```
 
-部署前在 Vercel 项目环境变量中配置 `DATABASE_URL`、`OPENAI_URL`、`OPENAI_API_KEY`、`OPENAI_MODEL`、`CRON_SECRET` 和 Conductor SSO 相关变量，然后执行 `npm run db:migrate`。
+Set `DATABASE_URL`, the `OPENAI_*` and Conductor SSO variables, and `CRON_SECRET` in your Vercel project, then run `npm run db:migrate`.
+
+## Tech Stack
+
+Next.js 16 · React 19 · TypeScript · Tailwind CSS v4 · PostgreSQL · Conductor SSO · OpenAI-compatible LLM
