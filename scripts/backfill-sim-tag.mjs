@@ -56,9 +56,9 @@ function loadEnvFromFile(path) {
 
 loadEnvFromFile(resolve(projectRoot, ".env"));
 
-const OPENAI_URL = (process.env.OPENAI_URL || "https://api.openai.com/v1").replace(/\/+$/, "");
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
+const OPENAI_URL = ((process.env.OPENAI_URL || "https://api.openai.com/v1").trim()).replace(/\/+$/, "");
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY?.trim();
+const OPENAI_MODEL = (process.env.OPENAI_MODEL || "gpt-4o-mini").trim();
 const APP_URL = process.env.APP_URL || "http://localhost:3000";
 const DATA_FILE = process.env.ARXIV_DATA_FILE_NAME || "arxiv-state.json";
 const CONCURRENCY = Math.max(1, Number(process.env.BACKFILL_CONCURRENCY || 3));

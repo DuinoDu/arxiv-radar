@@ -100,12 +100,21 @@ interface AnalysisResult {
   error?: string;
 }
 
+function readEnv(name: string) {
+  const value = process.env[name];
+  return typeof value === "string" ? value.trim() : value;
+}
+
 function getOpenAiBaseUrl() {
-  return (process.env.OPENAI_URL || DEFAULT_OPENAI_URL).replace(/\/+$/, "");
+  return (readEnv("OPENAI_URL") || DEFAULT_OPENAI_URL).replace(/\/+$/, "");
 }
 
 function getOpenAiModel() {
-  return process.env.OPENAI_MODEL || DEFAULT_MODEL;
+  return readEnv("OPENAI_MODEL") || DEFAULT_MODEL;
+}
+
+function getOpenAiApiKey() {
+  return readEnv("OPENAI_API_KEY");
 }
 
 function compactAbstract(abstract: string) {
@@ -175,7 +184,7 @@ function extractJson(text: string) {
 }
 
 async function requestAnalysis(article: ArxivArticle, fullText: PaperFullText, useJsonMode: boolean) {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = getOpenAiApiKey();
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is not configured");
   }
