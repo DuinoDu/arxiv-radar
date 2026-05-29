@@ -1,5 +1,6 @@
 import { PaperDashboard } from "@/components/arxiv/PaperDashboard";
 import { LoginRequired } from "@/components/auth/LoginRequired";
+import { isAppConfigured } from "@/lib/app-settings";
 import { parseTagFilter } from "@/lib/arxiv/filters";
 import { getInitialPaperListData, normalizePaperDateKey } from "@/lib/arxiv/paper-list";
 import { readAppSettings, readArxivState } from "@/lib/arxiv/store";
@@ -27,6 +28,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<Se
     readArxivState(authUser.id),
     readAppSettings(authUser.id),
   ]);
+  const needsSetup = !isAppConfigured(settings);
   const tagConfigs = settings.tags.length > 0 ? settings.tags : DEFAULT_TAG_CONFIGS;
   const tagIds = new Set(tagConfigs.map((t) => t.id));
   const initialFilter = parseTagFilter(params?.tag, tagIds);
@@ -44,6 +46,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<Se
       disableManualRun={Boolean(process.env.CRON_SECRET)}
       initialData={initialData}
       initialFilter={initialFilter}
+      needsSetup={needsSetup}
       tagConfigs={tagConfigs}
       timeZone={TIME_ZONE}
     />

@@ -8,7 +8,11 @@
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { connect, type AppClient } from "@love-moon/app-sdk/server";
-import { createEnvAppSettings, requireConductorValue } from "@/lib/app-settings";
+import {
+  DEFAULT_CONDUCTOR_APP_NAME,
+  createEnvAppSettings,
+  requireConductorValue,
+} from "@/lib/app-settings";
 import { readAppSettings } from "@/lib/arxiv/store";
 import type { AuthSession } from "@/lib/auth/session";
 
@@ -140,7 +144,7 @@ export async function bindArxivRadarProject(session?: AuthSession) {
 
   const client = await getConductorClient(session);
   return client.projects.bind({
-    name: settings.conductor.appName || "arxiv-radar",
+    name: settings.conductor.appName || DEFAULT_CONDUCTOR_APP_NAME,
     daemonHost: requireConductorValue(settings.conductor.daemonHost, "daemonHost"),
     workspacePath,
   });

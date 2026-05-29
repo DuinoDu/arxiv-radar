@@ -973,6 +973,7 @@ export function PaperDashboard({
   disableManualRun = false,
   initialData,
   initialFilter,
+  needsSetup = false,
   tagConfigs = DEFAULT_TAG_CONFIGS,
   timeZone,
 }: {
@@ -980,6 +981,7 @@ export function PaperDashboard({
   disableManualRun?: boolean;
   initialData: PaperListInitialData;
   initialFilter: TagFilter;
+  needsSetup?: boolean;
   tagConfigs?: TagConfig[];
   timeZone: string;
 }) {
@@ -1641,7 +1643,7 @@ export function PaperDashboard({
                 <ManualAddButton onPaperExists={focusExistingPaper} tagConfigs={tagConfigs} />
                 <RunAnalysisButton disabled={disableManualRun} />
               </div>
-              {authUser ? <SettingsPopup /> : null}
+              {authUser ? <SettingsPopup requireSetup={needsSetup} /> : null}
             </div>
           </div>
 

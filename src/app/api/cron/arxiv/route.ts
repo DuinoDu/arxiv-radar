@@ -84,6 +84,12 @@ async function automaticRunSkipReason(userId: string, settings: AppSettings) {
     return "auto_fetch_disabled";
   }
 
+  // Users who haven't finished onboarding have no source URL; skip them so the
+  // cron doesn't churn through failing runs against an empty URL.
+  if (!settings.arxivDailyUrl.trim()) {
+    return "not_configured";
+  }
+
   const timeZone = appTimeZone();
   const now = new Date();
   const currentLocal = localParts(now, timeZone);

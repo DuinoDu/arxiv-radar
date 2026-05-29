@@ -1,5 +1,7 @@
-import { ARXIV_RECENT_URL } from "@/lib/arxiv/fetcher";
-import { DEFAULT_TAG_CONFIGS, type AppSettings, type TagConfig } from "@/lib/arxiv/types";
+import { type AppSettings, type TagConfig } from "@/lib/arxiv/types";
+
+/** Default Conductor app name created for a brand-new user. */
+export const DEFAULT_CONDUCTOR_APP_NAME = "arxiv-radar-chat";
 
 export interface PublicAppSettings {
   arxivDailyUrl: string;
@@ -79,7 +81,9 @@ export function appTimeZone() {
 
 export function createEnvAppSettings(): AppSettings {
   return {
-    arxivDailyUrl: process.env.ARXIV_DAILY_URL?.trim() || ARXIV_RECENT_URL,
+    // New users start with empty settings so the onboarding flow forces an
+    // explicit configuration. A deployment may still seed defaults via env.
+    arxivDailyUrl: process.env.ARXIV_DAILY_URL?.trim() || "",
     cron: {
       enabled: process.env.ARXIV_AUTO_FETCH_ENABLED !== "0",
       localTime: cronLocalTimeFromEnv(),
@@ -89,11 +93,27 @@ export function createEnvAppSettings(): AppSettings {
       token: process.env.CONDUCTOR_TOKEN?.trim() || "",
       daemonHost: process.env.CONDUCTOR_DAEMON_HOST?.trim() || "",
       workspacePath: process.env.CONDUCTOR_WORKSPACE_PATH?.trim() || "",
-      appName: process.env.CONDUCTOR_APP_NAME?.trim() || "arxiv-radar",
+      appName: process.env.CONDUCTOR_APP_NAME?.trim() || DEFAULT_CONDUCTOR_APP_NAME,
       backendType: process.env.CONDUCTOR_BACKEND_TYPE?.trim() || "",
     },
-    tags: DEFAULT_TAG_CONFIGS,
+    // Empty by default; users define their own tags during onboarding.
+    tags: [],
   };
+}
+
+/**
+ * Whether a user has supplied the minimum settings required to actually use
+ * the app: an arXiv source URL to fetch papers and the Conductor daemon host +
+ * workspace needed to run paper chats. `baseUrl`/`token` come from the SSO
+ * session (no popup field) so they are intentionally excluded here, and
+ * `backendType`/`appName`/`tags` are optional.
+ */
+export function isAppConfigured(settings: AppSettings): boolean {
+  return Boolean(
+    settings.arxivDailyUrl.trim() &&
+      settings.conductor.daemonHost.trim() &&
+      settings.conductor.workspacePath.trim(),
+  );
 }
 
 function normalizeTagConfigs(value: unknown, fallback: TagConfig[]): TagConfig[] {
@@ -130,7 +150,7 @@ export function normalizeAppSettings(
       token: stringValue(conductor.token, fallback.conductor.token),
       daemonHost: stringValue(conductor.daemonHost, fallback.conductor.daemonHost),
       workspacePath: stringValue(conductor.workspacePath, fallback.conductor.workspacePath),
-      appName: stringValue(conductor.appName, fallback.conductor.appName) || "arxiv-radar",
+      appName: stringValue(conductor.appName, fallback.conductor.appName) || DEFAULT_CONDUCTOR_APP_NAME,
       backendType: stringValue(conductor.backendType, fallback.conductor.backendType),
     },
     tags: normalizeTagConfigs(root.tags, fallback.tags),
@@ -166,7 +186,10 @@ export function settingsFromPublicInput(
   const cronLocalTime = stringValue(input.cronLocalTime, current.cron.localTime);
   const conductorToken = stringValue(input.conductorToken, "");
 
-  validateHttpUrl(arxivDailyUrl, "arxiv daily 链接");
+  // Allow saving partial progress during onboarding; only validate when set.
+  if (arxivDailyUrl) {
+    validateHttpUrl(arxivDailyUrl, "arxiv daily 链接");
+  }
   validateCronLocalTime(cronLocalTime);
 
   const conductorBaseUrl = stringValue(input.conductorBaseUrl, current.conductor.baseUrl);
@@ -185,7 +208,7 @@ export function settingsFromPublicInput(
       token: conductorToken || current.conductor.token,
       daemonHost: stringValue(input.conductorDaemonHost, current.conductor.daemonHost),
       workspacePath: stringValue(input.conductorWorkspacePath, current.conductor.workspacePath),
-      appName: stringValue(input.conductorAppName, current.conductor.appName) || "arxiv-radar",
+      appName: stringValue(input.conductorAppName, current.conductor.appName) || DEFAULT_CONDUCTOR_APP_NAME,
       backendType: stringValue(input.conductorBackendType, current.conductor.backendType),
     },
     tags: normalizeTagConfigs(input.tags, current.tags),

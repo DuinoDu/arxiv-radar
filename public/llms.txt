@@ -1,0 +1,92 @@
+# arxiv-radar
+
+> Your daily AI-powered radar for robotics research. arxiv-radar auto-fetches new arXiv papers on a per-user schedule, analyzes each one with an LLM (summary, hypothesis, method, problem, conclusion), auto-tags the topics you care about, and lets you chat with any paper. Every user gets isolated papers, tags, settings, and schedules.
+
+Website: https://arxiv-radar.vercel.app/
+Tech: Next.js 16 · React 19 · TypeScript · Tailwind CSS v4 · PostgreSQL · Conductor SSO · OpenAI-compatible LLM
+
+This file explains how to use arxiv-radar and how to configure it, for both end users (in-app settings) and operators (deployment env vars). UI labels are shown in Chinese because the app interface is in Chinese.
+
+## Getting started (end user)
+
+1. Open the site and sign in with **Conductor SSO** (登录). Login is required — nothing is visible until you are signed in.
+2. On your **first login** a setup dialog ("初始化配置") opens automatically. You cannot close it until you fill the required fields and save. This is intentional: the app only becomes usable after it is configured.
+3. Fill the required settings (marked with a red `*`), press **完成配置** (Finish setup), and the dashboard becomes available.
+4. Wait for the first scheduled run, or trigger an analysis manually, to populate papers.
+
+You can reopen settings any time via the gear icon (⚙️ "配置") in the top-right header.
+
+## In-app configuration (gear menu "配置")
+
+Each field has a `?` icon — hover (or focus) it for inline help. Required fields are marked `*`.
+
+### Section: arxiv daily
+- **拉取链接 (Fetch URL)** — REQUIRED. An arXiv listing page URL that decides which papers are pulled each day. Pick a category on arxiv.org and copy the address-bar URL.
+  - Example (robotics / cs.RO): `https://arxiv.org/list/cs.RO/recent?skip=0&show=100`
+
+### Section: cron
+- **自动拉取 (Auto-fetch)** — toggle. When on, the system fetches and analyzes new papers daily at the time below.
+- **time** — daily fetch time in `HH:mm`, 24-hour, interpreted in the server time zone (`APP_TIME_ZONE`, default `Asia/Shanghai`).
+
+### Section: chat (Conductor)
+Powers "chat with a paper". The Conductor base URL and token come from your SSO session, so they are not entered here.
+- **daemon (daemon host)** — REQUIRED. The Conductor daemon host that runs the AI chat, e.g. `m1`. Provided by your Conductor environment.
+- **AI backend** — optional. The backend/model type for paper chat, e.g. `codex` or `claude`. Leave empty to use the server default.
+- **workspace** — REQUIRED. Absolute path of the working directory used for chats, e.g. `~/ws/workspace`. It is auto-created on first bind.
+- **app name** — defaults to `arxiv-radar-chat`. The Conductor application name used to isolate this app's chat tasks. Usually keep the default.
+
+### Section: tags
+- Custom paper tags used for auto-classification and filtering. Each tag has:
+  - **ID** — lowercase identifier (e.g. `vla`).
+  - **显示名 (Label)** — text shown in the UI (e.g. `VLA`).
+- Empty by default; add your own. Click "添加" to add a tag, the trash icon to remove one.
+
+> Minimum required to start using the app: **Fetch URL + daemon + workspace**. (AI backend, app name, and tags are optional.)
+
+## Using the dashboard
+
+- **Paper list** — analyzed papers grouped by date; each card shows the LLM summary, hypothesis, method, problem, conclusion, tags (with evidence), and any detected GitHub link.
+- **Filters** — "全部" (all), each tag, "收藏" (favorites), and chat status (running / stopped).
+- **Run analysis** — manually trigger a fetch + analysis run for your account.
+- **Manual add** — add a specific paper by arXiv id/URL.
+- **Chat** — open a paper and ask questions; chats are backed by per-user Conductor tasks.
+- **Favorites / hide / custom tags / GitHub link** — per-paper actions, all scoped to your account.
+- **PWA** — installable; works well on mobile.
+
+## Deployment configuration (operator, .env.local)
+
+Set these environment variables (see `.env.example`). Env values can also seed defaults for new users' in-app settings.
+
+- `DATABASE_URL` — PostgreSQL connection string.
+- `OPENAI_URL` / `OPENAI_API_KEY` / `OPENAI_MODEL` — OpenAI-compatible LLM endpoint used for analysis.
+- `APP_URL` — this app's public URL.
+- `CONDUCTOR_BASE_URL` — Conductor SSO base URL.
+- `CONDUCTOR_SSO_CLIENT_ID` / `CONDUCTOR_SSO_CLIENT_SECRET` — Conductor SSO client credentials.
+- `ARXIV_AUTH_SECRET` — secret for encrypting the session cookie.
+- `CRON_SECRET` — optional bearer token guarding the cron endpoint.
+- `APP_TIME_ZONE` — time zone for cron scheduling (default `Asia/Shanghai`).
+- Optional setting seeds (otherwise empty for new users): `ARXIV_DAILY_URL`, `ARXIV_AUTO_FETCH_ENABLED`, `ARXIV_RUN_HOUR`, `ARXIV_RUN_MINUTE`, `CONDUCTOR_DAEMON_HOST`, `CONDUCTOR_WORKSPACE_PATH`, `CONDUCTOR_APP_NAME` (default `arxiv-radar-chat`), `CONDUCTOR_BACKEND_TYPE`.
+
+Register an `arxiv-radar` client on Conductor with `${APP_URL}/api/auth/callback` in its `redirect_uris`.
+
+Setup:
+```bash
+npm install
+cp .env.example .env.local   # fill in keys
+npm run db:migrate
+npm run dev                  # http://localhost:3000
+```
+
+## Scheduled fetching
+
+- `GET /api/cron/arxiv` — automatic run for all users (send `Authorization: Bearer $CRON_SECRET`). Users without a Fetch URL are skipped.
+- `POST /api/cron/arxiv?manual=1` — manual run for the logged-in user.
+- `npm run cron` — trigger the auto cron once locally.
+- `npm run worker` — local worker, polls every 5 minutes.
+
+On Vercel, `vercel.json` schedules `*/5 * * * *`; actual run times come from each user's settings and `APP_TIME_ZONE`.
+
+## Links
+
+- Website: https://arxiv-radar.vercel.app/
+- Source & full docs: see the project `README.md`.
