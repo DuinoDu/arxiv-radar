@@ -4,7 +4,6 @@ import { isAppConfigured } from "@/lib/app-settings";
 import { parseTagFilter } from "@/lib/arxiv/filters";
 import { getInitialPaperListData, normalizePaperDateKey } from "@/lib/arxiv/paper-list";
 import { readAppSettings, readArxivState } from "@/lib/arxiv/store";
-import { DEFAULT_TAG_CONFIGS } from "@/lib/arxiv/types";
 import { getCurrentAuthUser, getLoginPath } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +28,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<Se
     readAppSettings(authUser.id),
   ]);
   const needsSetup = !isAppConfigured(settings);
-  const tagConfigs = settings.tags.length > 0 ? settings.tags : DEFAULT_TAG_CONFIGS;
+  const tagConfigs = settings.tags;
   const tagIds = new Set(tagConfigs.map((t) => t.id));
   const initialFilter = parseTagFilter(params?.tag, tagIds);
   const initialData = getInitialPaperListData(

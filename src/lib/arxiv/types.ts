@@ -8,18 +8,6 @@ export const PAPER_TAGS = ["egocentric", "vla", "world_model", "so101", "vr", "t
 export type BuiltInPaperTag = (typeof PAPER_TAGS)[number];
 export type PaperTag = string;
 
-export const DEFAULT_TAG_CONFIGS: TagConfig[] = [
-  { id: "egocentric", label: "egocentric" },
-  { id: "vla", label: "VLA" },
-  { id: "world_model", label: "WM" },
-  { id: "so101", label: "SO101" },
-  { id: "vr", label: "VR" },
-  { id: "teleop", label: "teleop" },
-  { id: "slam", label: "SLAM" },
-  { id: "umi", label: "UMI" },
-  { id: "sim", label: "Sim" },
-];
-
 export type PaperTagSource = "title" | "abstract" | "full_text";
 export type FullTextStatus = "available" | "unavailable" | "failed";
 

@@ -16,7 +16,6 @@ import {
 import { buildTagLabels, parseTagFilter, type TagFilter } from "@/lib/arxiv/filters";
 import {
   PAPER_TAGS,
-  DEFAULT_TAG_CONFIGS,
   type AnalysisRun,
   type AnalyzedPaper,
   type PaperTag,
@@ -1026,7 +1025,7 @@ export function PaperDashboard({
   initialFilter,
   loginHref = "/api/auth/login",
   needsSetup = false,
-  tagConfigs = DEFAULT_TAG_CONFIGS,
+  tagConfigs,
   timeZone,
 }: {
   authUser?: PublicAuthUser | null;
@@ -1035,7 +1034,7 @@ export function PaperDashboard({
   initialFilter: TagFilter;
   loginHref?: string;
   needsSetup?: boolean;
-  tagConfigs?: TagConfig[];
+  tagConfigs: TagConfig[];
   timeZone: string;
 }) {
   const tagIds = useMemo(() => tagConfigs.map((t) => t.id), [tagConfigs]);

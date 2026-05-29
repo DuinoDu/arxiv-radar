@@ -4,17 +4,17 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AlertCircle, CheckCircle2, Loader2, Plus, X } from "lucide-react";
-import { DEFAULT_TAG_CONFIGS, type PaperTag, type TagConfig } from "@/lib/arxiv/types";
+import { type PaperTag, type TagConfig } from "@/lib/arxiv/types";
 import { useFavorites } from "@/lib/arxiv/useFavorites";
 
 type SubmitState = "idle" | "submitting" | "done" | "error";
 
 export function ManualAddButton({
   onPaperExists,
-  tagConfigs = DEFAULT_TAG_CONFIGS,
+  tagConfigs,
 }: {
   onPaperExists?: (id: string) => void;
-  tagConfigs?: TagConfig[];
+  tagConfigs: TagConfig[];
 }) {
   const router = useRouter();
   const { addFavorite } = useFavorites();
