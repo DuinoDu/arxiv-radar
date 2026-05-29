@@ -8,7 +8,6 @@
     "start": "next start",
     "lint": "eslint",
     "db:migrate": "node scripts/db-migrate.mjs",
-    "db:import-json": "node scripts/migrate-json-state-to-db.mjs",
     "cron": "node scripts/run-arxiv-cron.mjs",
     "worker": "node scripts/daily-arxiv-worker.mjs"
   },

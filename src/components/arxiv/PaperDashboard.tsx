@@ -675,12 +675,16 @@ function PaperRow({
   isEditingTags,
   removePending,
   chatPending,
+  chatDeletePending,
   allTagIds,
   dynamicLabels,
   tagIdSet,
   onToggleFavorite,
   onChatClick,
   onChatCancel,
+  onChatDeleteRequest,
+  onChatDeleteConfirm,
+  onChatDeleteCancel,
   onStartTagEdit,
   onCancelTagEdit,
   onTagsChange,
@@ -696,12 +700,16 @@ function PaperRow({
   isEditingTags: boolean;
   removePending: boolean;
   chatPending: boolean;
+  chatDeletePending: boolean;
   allTagIds: readonly string[];
   dynamicLabels: Record<string, string>;
   tagIdSet: ReadonlySet<string>;
   onToggleFavorite: (id: string) => void;
   onChatClick: (id: string) => void;
   onChatCancel: () => void;
+  onChatDeleteRequest: (id: string) => void;
+  onChatDeleteConfirm: (id: string) => void;
+  onChatDeleteCancel: () => void;
   onStartTagEdit: (id: string) => void;
   onCancelTagEdit: () => void;
   onTagsChange: (id: string, tags: PaperTag[]) => void;
@@ -715,6 +723,37 @@ function PaperRow({
     ["问题", paper.problem],
     ["结论", paper.conclusion],
   ];
+
+  // Single- vs double-click disambiguation for the idle chat button.
+  // A single click arms the inplace "chat?" confirm; a double click arms the
+  // inplace "del?" confirm that tears down the chat session + Conductor task.
+  // We can't lean on the browser's `dblclick` event here because each of its
+  // two underlying `click`s would already drive the chat confirm forward (and
+  // the second one would open the chat), so we count clicks against a short
+  // timer instead.
+  const chatClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (chatClickTimerRef.current) {
+        clearTimeout(chatClickTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  const handleIdleChatClick = useCallback(() => {
+    if (chatClickTimerRef.current) {
+      // Second click within the window → double-click → delete intent.
+      clearTimeout(chatClickTimerRef.current);
+      chatClickTimerRef.current = null;
+      onChatDeleteRequest(paper.id);
+      return;
+    }
+    chatClickTimerRef.current = setTimeout(() => {
+      chatClickTimerRef.current = null;
+      onChatClick(paper.id);
+    }, 250);
+  }, [onChatClick, onChatDeleteRequest, paper.id]);
 
   return (
     <article
@@ -811,7 +850,19 @@ function PaperRow({
               fill={isFavorite ? "currentColor" : "none"}
             />
           </button>
-          {chatPending ? (
+          {chatDeletePending ? (
+            <button
+              type="button"
+              onClick={() => onChatDeleteConfirm(paper.id)}
+              onBlur={onChatDeleteCancel}
+              title="再次点击删除 chat 会话与 Conductor 任务"
+              aria-label={`${paper.title} 确认删除 chat 会话`}
+              className="inline-flex h-9 items-center gap-1 rounded-md border border-red-300 bg-red-50 px-2 text-xs font-semibold text-red-700 transition hover:bg-red-100 dark:border-red-900 dark:bg-red-950/60 dark:text-red-200 dark:hover:bg-red-950"
+            >
+              <MessageCircle className="h-4 w-4" aria-hidden="true" />
+              del?
+            </button>
+          ) : chatPending ? (
             <button
               type="button"
               onClick={() => onChatClick(paper.id)}
@@ -826,9 +877,9 @@ function PaperRow({
           ) : (
             <button
               type="button"
-              onClick={() => onChatClick(paper.id)}
-              title={chatStatusTitle(chatStatus)}
-              aria-label={`${paper.title} chat${chatStatusAriaSuffix(chatStatus)}`}
+              onClick={handleIdleChatClick}
+              title={`${chatStatusTitle(chatStatus)}（双击删除会话）`}
+              aria-label={`${paper.title} chat${chatStatusAriaSuffix(chatStatus)}，双击删除会话`}
               className="relative inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-900"
             >
               <MessageCircle className="h-4 w-4" aria-hidden="true" />
@@ -994,6 +1045,7 @@ export function PaperDashboard({
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null);
   const [pendingChatId, setPendingChatId] = useState<string | null>(null);
+  const [pendingChatDeleteId, setPendingChatDeleteId] = useState<string | null>(null);
   const [summary, setSummary] = useState<PaperListSummary>(initialData.summary);
   const [summarySource, setSummarySource] = useState(initialData.summary);
   const [selectedDate, setSelectedDate] = useState<string | null>(initialData.selectedDate);
@@ -1035,6 +1087,7 @@ export function PaperDashboard({
     setLoadError(null);
     setPendingRemoveId(null);
     setPendingChatId(null);
+    setPendingChatDeleteId(null);
   }
 
   const loadPaperPage = useCallback(
@@ -1232,15 +1285,60 @@ export function PaperDashboard({
     setPendingChatId(null);
   }, []);
 
+  const handleChatDeleteCancel = useCallback(() => {
+    setPendingChatDeleteId(null);
+  }, []);
+
+  const handleChatDeleteRequest = useCallback((paperId: string) => {
+    // Double-click on the chat button arms the inplace "del?" confirm. Drop any
+    // other pending "?" prompts so only one is visible at a time.
+    setPendingRemoveId(null);
+    setPendingChatId(null);
+    setPendingChatDeleteId(paperId);
+  }, []);
+
+  const handleChatDeleteConfirm = useCallback((paperId: string) => {
+    // Confirm click on "del?" → tear down the bound chat session + Conductor
+    // task on the server, and optimistically clear the local chat-status dots
+    // for this paper so the button returns to its neutral idle look.
+    setPendingChatDeleteId(null);
+    setRunningChatPaperIds((prev) => {
+      if (!prev.has(paperId)) return prev;
+      const next = new Set(prev);
+      next.delete(paperId);
+      return next;
+    });
+    setKilledChatPaperIds((prev) => {
+      if (!prev.has(paperId)) return prev;
+      const next = new Set(prev);
+      next.delete(paperId);
+      return next;
+    });
+
+    void fetch(`/api/papers/${encodeURIComponent(paperId)}/chat`, {
+      method: "DELETE",
+    })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({ ok: false }));
+        if (!response.ok || !payload?.ok) {
+          throw new Error(payload?.error || "删除 chat 会话失败");
+        }
+      })
+      .catch((error) => {
+        console.error("delete chat session failed", error);
+      });
+  }, []);
+
   const handleChatClick = useCallback(
     (paperId: string) => {
       // Two-stage inplace confirm, mirroring the delete button:
       //   1st click → enter pending state (button label becomes "chat?")
       //   2nd click → open the chat page in a new tab and run the original
       //   onChatStart side-effect (auto-favorite).
-      // Cancel any pending remove on a different row so we don't display
-      // two simultaneous "?" prompts.
+      // Cancel any pending remove / chat-delete on a different row so we don't
+      // display two simultaneous "?" prompts.
       setPendingRemoveId(null);
+      setPendingChatDeleteId(null);
       setPendingChatId((current) => {
         if (current !== paperId) {
           return paperId;
@@ -1265,6 +1363,7 @@ export function PaperDashboard({
     //   1st click → enter pending state (button label becomes "remove?")
     //   2nd click → actually remove the paper from the UI and notify the server.
     setPendingChatId(null);
+    setPendingChatDeleteId(null);
     setPendingRemoveId((current) => {
       if (current !== paperId) {
         return paperId;
@@ -1751,12 +1850,16 @@ export function PaperDashboard({
                 isEditingTags={editingPaperId === paper.id}
                 removePending={pendingRemoveId === paper.id}
                 chatPending={pendingChatId === paper.id}
+                chatDeletePending={pendingChatDeleteId === paper.id}
                 allTagIds={tagIds}
                 dynamicLabels={dynamicLabels}
                 tagIdSet={tagIdSet}
                 onToggleFavorite={toggleFavorite}
                 onChatClick={handleChatClick}
                 onChatCancel={handleChatCancel}
+                onChatDeleteRequest={handleChatDeleteRequest}
+                onChatDeleteConfirm={handleChatDeleteConfirm}
+                onChatDeleteCancel={handleChatDeleteCancel}
                 onStartTagEdit={handleStartTagEdit}
                 onCancelTagEdit={handleCancelTagEdit}
                 onTagsChange={handleTagsChange}
