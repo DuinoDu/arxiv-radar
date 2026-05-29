@@ -23,6 +23,8 @@
 # misc
 .DS_Store
 *.pem
+*.swo
+*.swp
 
 # debug
 npm-debug.log*
@@ -33,11 +35,6 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 !.env.example
-
-# local app state
-/data/*.json
-/data/*.tmp
-/data/sessions/
 
 # local agent runtime
 /.conductor/*

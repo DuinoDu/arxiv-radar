@@ -2,7 +2,7 @@
 
 # arxiv-radar
 
-**Your daily AI-powered radar for robotics research.**
+**Your daily AI-powered radar for arxiv reading.**
 
 Auto-fetches new arXiv papers every day, analyzes them with an AI, auto-tags the topics you care about, and lets you chat with any paper. 
 
@@ -24,7 +24,7 @@ And most important, it is FREE.
 
 - **Daily auto-fetch** — pulls the latest cs.RO papers on a per-user schedule.
 - **LLM analysis** — one-sentence summary, hypothesis, method, problem, and conclusion for every paper.
-- **Smart auto-tagging** — labels papers across topics like VLA, world models, egocentric, teleop, SLAM, UMI, sim, SO-101 and VR, with evidence quotes.
+- **Smart auto-tagging** — labels papers across topics like VLA, SLAM, UMI, and VR, with evidence quotes.
 - **Chat with papers** — ask questions about any paper, backed by per-user Conductor chat tasks.
 - **Personal workspace** — favorites, hide, custom tags, and detected GitHub links, all scoped to your account.
 - **PWA** — installable, works great on mobile.
