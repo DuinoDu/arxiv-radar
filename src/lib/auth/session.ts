@@ -205,6 +205,27 @@ export function getAppBaseUrl(request?: NextRequest) {
   return "http://localhost:3000";
 }
 
+/**
+ * Local-only login bypass switch — the same gate `/api/auth/dev-login`
+ * enforces: explicit opt-in via `DEV_AUTH_BYPASS=1` AND a non-production
+ * build. Server-only (reads `process.env`); never import into a client
+ * component.
+ */
+export function isDevAuthBypassEnabled() {
+  return (
+    process.env.NODE_ENV !== "production" &&
+    process.env.DEV_AUTH_BYPASS === "1"
+  );
+}
+
+/**
+ * Where the "login" affordance should point. In dev-bypass mode it
+ * short-circuits the Conductor SSO round-trip via `/api/auth/dev-login`.
+ */
+export function getLoginPath() {
+  return isDevAuthBypassEnabled() ? "/api/auth/dev-login" : "/api/auth/login";
+}
+
 export function getConductorBaseUrl() {
   const configured = process.env.CONDUCTOR_BASE_URL?.trim();
   if (!configured) {

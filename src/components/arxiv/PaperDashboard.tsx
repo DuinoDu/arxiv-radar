@@ -1024,6 +1024,7 @@ export function PaperDashboard({
   disableManualRun = false,
   initialData,
   initialFilter,
+  loginHref = "/api/auth/login",
   needsSetup = false,
   tagConfigs = DEFAULT_TAG_CONFIGS,
   timeZone,
@@ -1032,6 +1033,7 @@ export function PaperDashboard({
   disableManualRun?: boolean;
   initialData: PaperListInitialData;
   initialFilter: TagFilter;
+  loginHref?: string;
   needsSetup?: boolean;
   tagConfigs?: TagConfig[];
   timeZone: string;
@@ -1734,10 +1736,10 @@ export function PaperDashboard({
 
             <div className="flex items-start gap-2 md:gap-3">
               <div className="md:hidden">
-                <AuthButton compact initialUser={authUser} />
+                <AuthButton compact initialUser={authUser} loginHref={loginHref} />
               </div>
               <div className="hidden items-start gap-3 md:flex">
-                <AuthButton initialUser={authUser} />
+                <AuthButton initialUser={authUser} loginHref={loginHref} />
                 <ThemeToggle />
                 <ManualAddButton onPaperExists={focusExistingPaper} tagConfigs={tagConfigs} />
                 <RunAnalysisButton disabled={disableManualRun} />

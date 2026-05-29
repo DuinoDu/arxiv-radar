@@ -21,9 +21,11 @@ function userLabel(user: PublicAuthUser) {
 export function AuthButton({
   compact = false,
   initialUser,
+  loginHref = "/api/auth/login",
 }: {
   compact?: boolean;
   initialUser: PublicAuthUser | null;
+  loginHref?: string;
 }) {
   const router = useRouter();
   const [user, setUser] = useState<PublicAuthUser | null>(initialUser);
@@ -55,7 +57,7 @@ export function AuthButton({
   if (!user) {
     return (
       <a
-        href="/api/auth/login"
+        href={loginHref}
         onFocus={refreshUser}
         className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 hover:text-zinc-950 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900 dark:hover:text-white ${
           compact ? "w-10 px-0" : ""

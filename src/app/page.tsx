@@ -5,7 +5,7 @@ import { parseTagFilter } from "@/lib/arxiv/filters";
 import { getInitialPaperListData, normalizePaperDateKey } from "@/lib/arxiv/paper-list";
 import { readAppSettings, readArxivState } from "@/lib/arxiv/store";
 import { DEFAULT_TAG_CONFIGS } from "@/lib/arxiv/types";
-import { getCurrentAuthUser } from "@/lib/auth/session";
+import { getCurrentAuthUser, getLoginPath } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +46,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<Se
       disableManualRun={Boolean(process.env.CRON_SECRET)}
       initialData={initialData}
       initialFilter={initialFilter}
+      loginHref={getLoginPath()}
       needsSetup={needsSetup}
       tagConfigs={tagConfigs}
       timeZone={TIME_ZONE}

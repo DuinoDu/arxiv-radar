@@ -18,20 +18,17 @@
  * the chat calls will just 401 against Conductor.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { getAppBaseUrl, setSessionCookie } from "@/lib/auth/session";
+import {
+  getAppBaseUrl,
+  isDevAuthBypassEnabled,
+  setSessionCookie,
+} from "@/lib/auth/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function devBypassEnabled() {
-  return (
-    process.env.NODE_ENV !== "production" &&
-    process.env.DEV_AUTH_BYPASS === "1"
-  );
-}
-
 export async function GET(request: NextRequest) {
-  if (!devBypassEnabled()) {
+  if (!isDevAuthBypassEnabled()) {
     return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
   }
 
