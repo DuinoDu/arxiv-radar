@@ -3,10 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, FileText, Globe2, LogIn, MessageSquare } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   ChatView,
   createRestAdapter,
   type ChatViewLabels,
+  type RenderMessageContent,
 } from "@love-moon/app-sdk/react";
 import { isConductorAppError } from "@love-moon/app-sdk";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
@@ -37,6 +40,14 @@ const CHAT_LABELS: ChatViewLabels = {
   statusDone: "完成",
   restart: "重启",
   loadEarlier: "加载更早消息",
+  copy: "复制",
+  copied: "已复制",
+  resend: "重新发送",
+  scrollToBottom: "滚动到底部",
+  jumpToQuestion: "跳转到问题",
+  emptyTitle: "开始新对话",
+  emptyBody: "向 AI 提问关于这篇论文的任何问题",
+  restartPending: "重新开始",
 };
 
 type BindResponse = {
@@ -61,6 +72,10 @@ const MAX_AUTO_REBINDS = 3;
 // don't DDoS our BFF; tight enough that kill / restart transitions land in
 // the UI within ~5 seconds.
 const TASK_STATUS_POLL_MS = 5_000;
+
+const renderMarkdown: RenderMessageContent = (m) => (
+  <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+);
 
 export function PaperChat({ paper, authenticated }: { paper: AnalyzedPaper; authenticated: boolean }) {
   const [taskId, setTaskId] = useState<string | null>(null);
@@ -384,17 +399,14 @@ export function PaperChat({ paper, authenticated }: { paper: AnalyzedPaper; auth
             加载中…
           </div>
         ) : (
-          // SDK 0.4.x renders messages itself (no more MessageBubble export);
-          // we let ChatView handle layout & per-message toolbar. Restart is
-          // exposed externally via the TaskStatusBadge below for now until the
-          // chat-migration worktree lands its replacement UI.
           <ChatView
-            taskId={taskId}
-            adapter={adapter}
-            onError={handleChatError}
-            labels={CHAT_LABELS}
-            className="absolute inset-0"
-          />
+              taskId={taskId}
+              adapter={adapter}
+              onError={handleChatError}
+              labels={CHAT_LABELS}
+              renderMessageContent={renderMarkdown}
+              className="absolute inset-0 h-full"
+            />
         )}
       </div>
     </section>
