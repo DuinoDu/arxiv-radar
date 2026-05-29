@@ -74,6 +74,32 @@ export async function killConductorTask(taskId: string, session?: AuthSession): 
 }
 
 /**
+ * Delete a Conductor task. Maps to `DELETE /api/tasks/:id`. Used by the paper
+ * card's "del?" affordance to tear down a chat session entirely (as opposed to
+ * `kill`, which only stops a running task but keeps it around).
+ *
+ * A 404 is treated as success: the task is already gone, which is exactly the
+ * post-condition the caller wants. Any other non-2xx is surfaced so the caller
+ * can fall back (e.g. to `kill`) when a given daemon build doesn't expose DELETE.
+ */
+export async function deleteConductorTask(taskId: string, session?: AuthSession): Promise<void> {
+  const config = await getRawConductorConfig(session);
+  const url = `${config.baseUrl}/api/tasks/${encodeURIComponent(taskId)}`;
+  const response = await fetch(url, {
+    method: "DELETE",
+    headers: {
+      Accept: "application/json",
+      Authorization: config.authHeader,
+    },
+  });
+  if (response.status === 404) return;
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw makeError(response.status, body, `delete failed (${response.status})`);
+  }
+}
+
+/**
  * Restart a Conductor task. Maps to `POST /api/tasks/:id/restart` with
  * `{strategy, backend_type?}`. Conductor responds with the updated task
  * object (status typically transitions back to 'init' / 'running').
