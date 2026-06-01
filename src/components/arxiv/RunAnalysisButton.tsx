@@ -1,39 +1,100 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertCircle, CheckCircle2, Loader2, Play } from "lucide-react";
 
 type RunState = "idle" | "running" | "done" | "error";
 
 interface RunAnalysisPayload {
   ok?: boolean;
+  code?: string;
   error?: string;
   run?: {
+    id?: string;
     analyzedCount?: number;
     skippedAlreadyProcessedCount?: number;
     failedCount?: number;
   };
 }
 
-export function RunAnalysisButton({ disabled = false }: { disabled?: boolean }) {
-  const router = useRouter();
-  const [state, setState] = useState<RunState>("idle");
-  const [message, setMessage] = useState("");
+const RUNNING_POLL_MS = 8000;
 
-  async function runAnalysis() {
-    if (disabled) {
+export function RunAnalysisButton({
+  disabled = false,
+  isRunning = false,
+  runningRunId,
+}: {
+  disabled?: boolean;
+  /**
+   * When true, the button is rendered in the "running" state on mount — used
+   * to hydrate from server-side state so a page refresh during a run doesn't
+   * re-enable the button and let the user kick off a second run.
+   */
+  isRunning?: boolean;
+  runningRunId?: string;
+}) {
+  const router = useRouter();
+  const [state, setState] = useState<RunState>(isRunning ? "running" : "idle");
+  const [message, setMessage] = useState(
+    isRunning && runningRunId ? `任务运行中（${runningRunId}）` : "",
+  );
+  // Tracks whether the *current* running state was started by an in-flight
+  // POST from this component. If so, we await the POST instead of polling so
+  // we can show the final result inline.
+  const ownsRequestRef = useRef(false);
+
+  // Hydration: if parent says a run is in progress (or stops being in
+  // progress), reflect that immediately.
+  useEffect(() => {
+    if (isRunning) {
+      setState((current) => (current === "running" ? current : "running"));
+      if (runningRunId) {
+        setMessage((current) => current || `任务运行中（${runningRunId}）`);
+      }
+    } else if (!ownsRequestRef.current) {
+      // The server says no run is in progress and we did not start one
+      // ourselves — drop back to idle so the button is usable again.
+      setState((current) => (current === "running" ? "idle" : current));
+    }
+  }, [isRunning, runningRunId]);
+
+  // While running, keep refreshing the server-side data so the parent's
+  // `isRunning` prop can flip to false as soon as the run finishes.
+  useEffect(() => {
+    if (state !== "running") return;
+    const timer = setInterval(() => {
+      router.refresh();
+    }, RUNNING_POLL_MS);
+    return () => clearInterval(timer);
+  }, [router, state]);
+
+  const runAnalysis = useCallback(async () => {
+    if (disabled || state === "running") {
       return;
     }
 
     setState("running");
     setMessage("");
+    ownsRequestRef.current = true;
 
     try {
       const response = await fetch("/api/cron/arxiv", {
         method: "POST",
       });
       const payload = (await response.json()) as RunAnalysisPayload;
+
+      if (response.status === 409 || payload.code === "already_running") {
+        // Another trigger beat us to it — stay in running state and let the
+        // periodic refresh pick up completion.
+        setMessage(
+          payload.run?.id
+            ? `已有任务在跑（${payload.run.id}），等它完成`
+            : "已有任务在跑，等它完成",
+        );
+        router.refresh();
+        return;
+      }
 
       if (!response.ok || !payload.ok) {
         throw new Error(payload.error || "Analysis failed");
@@ -53,8 +114,10 @@ export function RunAnalysisButton({ disabled = false }: { disabled?: boolean }) 
     } catch (error) {
       setState("error");
       setMessage((error as Error).message);
+    } finally {
+      ownsRequestRef.current = false;
     }
-  }
+  }, [disabled, router, state]);
 
   const icon =
     state === "running" ? (

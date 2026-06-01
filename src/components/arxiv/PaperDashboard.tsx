@@ -1010,7 +1010,194 @@ function PaperRow({
   );
 }
 
+type RunLogEntry = {
+  ts: string;
+  level: "info" | "warn" | "error";
+  message: string;
+  paperId?: string;
+};
+
+type RunLogsState =
+  | { status: "loading" }
+  | { status: "ready"; logs: RunLogEntry[] }
+  | { status: "error"; error: string };
+
+function logLevelStyle(level: RunLogEntry["level"]) {
+  switch (level) {
+    case "error":
+      return "text-red-600 dark:text-red-400";
+    case "warn":
+      return "text-amber-600 dark:text-amber-400";
+    default:
+      return "text-zinc-600 dark:text-zinc-400";
+  }
+}
+
+function formatLogTimestamp(value: string, timeZone: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
+function RunLogPanel({
+  runId,
+  timeZone,
+  state,
+  onReload,
+}: {
+  runId: string;
+  timeZone: string;
+  state: RunLogsState;
+  onReload: () => void;
+}) {
+  if (state.status === "loading") {
+    return (
+      <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+        正在加载 {runId} 的日志…
+      </div>
+    );
+  }
+
+  if (state.status === "error") {
+    return (
+      <div className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-600 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+        加载日志失败：{state.error}
+        <button
+          type="button"
+          onClick={onReload}
+          className="ml-2 underline hover:no-underline"
+        >
+          重试
+        </button>
+      </div>
+    );
+  }
+
+  if (state.logs.length === 0) {
+    return (
+      <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+        暂无日志记录。
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-h-72 overflow-auto rounded-md border border-zinc-200 bg-zinc-50 p-3 font-mono text-xs leading-5 dark:border-zinc-800 dark:bg-zinc-900">
+      {state.logs.map((entry, index) => (
+        <div key={index} className={`whitespace-pre-wrap break-words ${logLevelStyle(entry.level)}`}>
+          <span className="text-zinc-400 dark:text-zinc-500">
+            {formatLogTimestamp(entry.ts, timeZone)}
+          </span>{" "}
+          <span className="uppercase">[{entry.level}]</span>{" "}
+          {entry.paperId ? (
+            <span className="text-zinc-500 dark:text-zinc-400">{entry.paperId} </span>
+          ) : null}
+          {entry.message}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RunRow({
+  run,
+  timeZone,
+  isOpen,
+  onToggle,
+  logsState,
+  onReload,
+}: {
+  run: AnalysisRun;
+  timeZone: string;
+  isOpen: boolean;
+  onToggle: () => void;
+  logsState: RunLogsState | undefined;
+  onReload: () => void;
+}) {
+  return (
+    <div className="py-3 first:pt-0 last:pb-0">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={isOpen}
+        className="flex w-full flex-wrap items-center justify-between gap-3 rounded-md p-1 text-left transition hover:bg-zinc-50 dark:hover:bg-zinc-900"
+      >
+        <div className="flex items-center gap-2">
+          <ChevronDown
+            className={`h-3.5 w-3.5 text-zinc-400 transition-transform ${isOpen ? "rotate-0" : "-rotate-90"}`}
+            aria-hidden="true"
+          />
+          <span className={`rounded-full px-2 py-0.5 text-xs ring-1 ${statusStyles[run.status]}`}>
+            {statusLabels[run.status]}
+          </span>
+          <span className="text-sm text-zinc-500 dark:text-zinc-400">{formatDate(run.startedAt, timeZone)}</span>
+        </div>
+        <span className="text-sm text-zinc-700 dark:text-zinc-300">
+          新增 {run.analyzedCount} / 失败 {run.failedCount}
+          <span className="ml-2 text-xs text-zinc-400 dark:text-zinc-500">日志</span>
+        </span>
+      </button>
+      {isOpen ? (
+        <div className="mt-3">
+          <RunLogPanel
+            runId={run.id}
+            timeZone={timeZone}
+            state={logsState ?? { status: "loading" }}
+            onReload={onReload}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function RecentRuns({ runs, timeZone }: { runs: AnalysisRun[]; timeZone: string }) {
+  const [openRunId, setOpenRunId] = useState<string | null>(null);
+  const [logsByRun, setLogsByRun] = useState<Record<string, RunLogsState>>({});
+
+  const loadLogs = useCallback(async (runId: string) => {
+    setLogsByRun((prev) => ({ ...prev, [runId]: { status: "loading" } }));
+    try {
+      const response = await fetch(`/api/runs/${encodeURIComponent(runId)}/logs`, {
+        cache: "no-store",
+      });
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+        logs?: RunLogEntry[];
+      };
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "加载日志失败");
+      }
+      setLogsByRun((prev) => ({
+        ...prev,
+        [runId]: { status: "ready", logs: payload.logs ?? [] },
+      }));
+    } catch (error) {
+      setLogsByRun((prev) => ({
+        ...prev,
+        [runId]: { status: "error", error: (error as Error).message },
+      }));
+    }
+  }, []);
+
+  const handleToggle = useCallback(
+    (runId: string) => {
+      const willOpen = openRunId !== runId;
+      setOpenRunId(willOpen ? runId : null);
+      if (willOpen && !logsByRun[runId]) {
+        void loadLogs(runId);
+      }
+    },
+    [logsByRun, loadLogs, openRunId],
+  );
+
   if (runs.length === 0) {
     return null;
   }
@@ -1022,17 +1209,17 @@ function RecentRuns({ runs, timeZone }: { runs: AnalysisRun[]; timeZone: string 
       </summary>
       <div className="mt-4 divide-y divide-zinc-100 dark:divide-zinc-900">
         {runs.slice(0, 5).map((run) => (
-          <div key={run.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
-            <div className="flex items-center gap-2">
-              <span className={`rounded-full px-2 py-0.5 text-xs ring-1 ${statusStyles[run.status]}`}>
-                {statusLabels[run.status]}
-              </span>
-              <span className="text-sm text-zinc-500 dark:text-zinc-400">{formatDate(run.startedAt, timeZone)}</span>
-            </div>
-            <span className="text-sm text-zinc-700 dark:text-zinc-300">
-              新增 {run.analyzedCount} / 失败 {run.failedCount}
-            </span>
-          </div>
+          <RunRow
+            key={run.id}
+            run={run}
+            timeZone={timeZone}
+            isOpen={openRunId === run.id}
+            onToggle={() => handleToggle(run.id)}
+            logsState={logsByRun[run.id]}
+            onReload={() => {
+              void loadLogs(run.id);
+            }}
+          />
         ))}
       </div>
     </details>
@@ -1812,7 +1999,11 @@ export function PaperDashboard({
                 <AuthButton initialUser={authUser} loginHref={loginHref} />
                 <ThemeToggle />
                 <ManualAddButton onPaperExists={focusExistingPaper} tagConfigs={tagConfigs} />
-                <RunAnalysisButton disabled={disableManualRun} />
+                <RunAnalysisButton
+                  disabled={disableManualRun}
+                  isRunning={lastRun?.status === "running"}
+                  runningRunId={lastRun?.status === "running" ? lastRun.id : undefined}
+                />
               </div>
               {authUser ? <SettingsPopup requireSetup={needsSetup} /> : null}
             </div>

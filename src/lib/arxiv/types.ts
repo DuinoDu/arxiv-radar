@@ -73,6 +73,15 @@ export interface AnalysisRun {
   message?: string;
 }
 
+export type AnalysisRunLogLevel = "info" | "warn" | "error";
+
+export interface AnalysisRunLogEntry {
+  ts: string;
+  level: AnalysisRunLogLevel;
+  message: string;
+  paperId?: string;
+}
+
 export interface PaperTaskBinding {
   /** Conductor task id. The chat history lives inside this task. */
   taskId: string;
@@ -130,6 +139,11 @@ export interface RunArxivAnalysisOptions {
   force?: boolean;
   reanalyzeExisting?: boolean;
   sourceUrl?: string;
+  /**
+   * Human-readable origin (e.g. "cron", "manual", "reanalyze") used purely
+   * for run-log breadcrumbs. Has no effect on analysis behavior.
+   */
+  trigger?: string;
 }
 
 export interface RunArxivAnalysisResult {

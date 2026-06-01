@@ -4,6 +4,8 @@ import type { AuthUser } from "@/lib/auth/session";
 import { query, transaction } from "@/lib/db/postgres";
 import {
   type AnalysisRun,
+  type AnalysisRunLogEntry,
+  type AnalysisRunLogLevel,
   type AnalyzedPaper,
   type AppSettings,
   type ArxivArticle,
@@ -1187,6 +1189,139 @@ export async function clearPaperTaskBindingByTaskId(taskId: string) {
     `,
     [taskId],
   );
+}
+
+function logLevel(value: string | undefined | null): AnalysisRunLogLevel {
+  if (value === "warn" || value === "error") return value;
+  return "info";
+}
+
+type RunLogRow = QueryResultRow & {
+  ts: string;
+  level: string;
+  paper_id: string | null;
+  message: string;
+};
+
+export async function appendRunLogs(
+  userId: string,
+  runId: string,
+  entries: readonly AnalysisRunLogEntry[],
+) {
+  if (entries.length === 0) return;
+
+  const id = normalizedUserId(userId);
+  const userIds: string[] = [];
+  const runIds: string[] = [];
+  const timestamps: string[] = [];
+  const levels: AnalysisRunLogLevel[] = [];
+  const paperIds: (string | null)[] = [];
+  const messages: string[] = [];
+
+  for (const entry of entries) {
+    userIds.push(id);
+    runIds.push(runId);
+    timestamps.push(entry.ts);
+    levels.push(entry.level);
+    paperIds.push(entry.paperId ?? null);
+    messages.push(entry.message);
+  }
+
+  await query(
+    `
+      INSERT INTO user_analysis_run_logs(user_id, run_id, ts, level, paper_id, message)
+      SELECT
+        user_id,
+        run_id,
+        ts::timestamptz,
+        level,
+        paper_id,
+        message
+      FROM UNNEST(
+        $1::text[],
+        $2::text[],
+        $3::text[],
+        $4::text[],
+        $5::text[],
+        $6::text[]
+      ) AS t(user_id, run_id, ts, level, paper_id, message)
+    `,
+    [userIds, runIds, timestamps, levels, paperIds, messages],
+  );
+}
+
+export async function readRunLogs(
+  userId: string,
+  runId: string,
+): Promise<AnalysisRunLogEntry[]> {
+  const result = await query<RunLogRow>(
+    `
+      SELECT ts, level, paper_id, message
+      FROM user_analysis_run_logs
+      WHERE user_id = $1 AND run_id = $2
+      ORDER BY id ASC
+    `,
+    [normalizedUserId(userId), runId],
+  );
+
+  return result.rows.map((row) => ({
+    ts: typeof row.ts === "string" ? row.ts : new Date(row.ts).toISOString(),
+    level: logLevel(row.level),
+    paperId: row.paper_id ?? undefined,
+    message: row.message,
+  }));
+}
+
+/**
+ * Returns the most recent `running` analysis run for the user, but only if it
+ * started within `maxAgeMs`. This is intentional: an extremely old `running`
+ * row almost always means the process died mid-run, so we let a new trigger
+ * start a fresh run instead of forever blocking the user.
+ */
+export async function findActiveRunForUser(
+  userId: string,
+  maxAgeMs = 15 * 60 * 1000,
+): Promise<AnalysisRun | null> {
+  const id = normalizedUserId(userId);
+  const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
+  const result = await query<RunRow>(
+    `
+      SELECT
+        id,
+        source_url,
+        started_at,
+        finished_at,
+        status,
+        fetched_count,
+        skipped_already_processed_count,
+        analyzed_count,
+        failed_count,
+        skipped_ids,
+        message
+      FROM user_analysis_runs
+      WHERE user_id = $1 AND status = 'running' AND started_at > $2
+      ORDER BY started_at DESC
+      LIMIT 1
+    `,
+    [id, cutoff],
+  );
+
+  const row = result.rows[0];
+  return row ? runFromRow(row) : null;
+}
+
+export async function runBelongsToUser(userId: string, runId: string): Promise<boolean> {
+  const result = await query<{ exists: boolean }>(
+    `
+      SELECT EXISTS (
+        SELECT 1
+        FROM user_analysis_runs
+        WHERE user_id = $1 AND id = $2
+      ) AS exists
+    `,
+    [normalizedUserId(userId), runId],
+  );
+  return Boolean(result.rows[0]?.exists);
 }
 
 export async function finishRun(

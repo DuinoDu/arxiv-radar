@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { appTimeZone } from "@/lib/app-settings";
-import { runArxivAnalysis } from "@/lib/arxiv/job";
-import { listCronUsers, readAppSettings, readArxivState } from "@/lib/arxiv/store";
-import type { AnalysisRun, AppSettings } from "@/lib/arxiv/types";
+import { AnalysisAlreadyRunningError, runArxivAnalysis } from "@/lib/arxiv/job";
+import { listCronUsers, readAppSettings } from "@/lib/arxiv/store";
+import type { AppSettings } from "@/lib/arxiv/types";
 import { requireAuthSession } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
@@ -21,32 +21,6 @@ function isAuthorized(request: NextRequest) {
   return authorization === `Bearer ${secret}` || querySecret === secret;
 }
 
-function localParts(date: Date, timeZone: string) {
-  const formatter = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    hourCycle: "h23",
-  });
-  const parts = Object.fromEntries(
-    formatter.formatToParts(date).map((part) => [part.type, part.value]),
-  );
-
-  return {
-    dateKey: `${parts.year}-${parts.month}-${parts.day}`,
-    minutes: Number(parts.hour) * 60 + Number(parts.minute),
-  };
-}
-
-function cronLocalMinutes(localTime: string) {
-  const [hour, minute] = localTime.split(":").map((part) => Number.parseInt(part, 10));
-  return hour * 60 + minute;
-}
-
 function isAutomaticRequest(request: NextRequest) {
   if (request.method !== "GET") return false;
 
@@ -60,30 +34,13 @@ function isAutomaticRequest(request: NextRequest) {
   );
 }
 
-function hasRunForScheduledWindow(
-  runs: AnalysisRun[],
-  settings: AppSettings,
-  now: Date,
-  timeZone: string,
-) {
-  const currentLocal = localParts(now, timeZone);
-  const scheduledMinutes = cronLocalMinutes(settings.cron.localTime);
-
-  return runs.some((run) => {
-    if (run.status !== "completed" || run.failedCount > 0) {
-      return false;
-    }
-
-    const runLocal = localParts(new Date(run.startedAt), timeZone);
-    return (
-      runLocal.dateKey === currentLocal.dateKey &&
-      runLocal.minutes >= scheduledMinutes &&
-      run.sourceUrl === settings.arxivDailyUrl
-    );
-  });
-}
-
-async function automaticRunSkipReason(userId: string, settings: AppSettings) {
+/**
+ * Returns a skip reason only when running is impossible for this user; intent
+ * is that *every* trigger (scheduled or manual) processes the configured URL
+ * end-to-end so newly published papers can never sit in a "today is done"
+ * cooldown window.
+ */
+function automaticRunSkipReason(settings: AppSettings) {
   if (!settings.cron.enabled) {
     return "auto_fetch_disabled";
   }
@@ -94,24 +51,14 @@ async function automaticRunSkipReason(userId: string, settings: AppSettings) {
     return "not_configured";
   }
 
-  const timeZone = appTimeZone();
-  const now = new Date();
-  const currentLocal = localParts(now, timeZone);
-  const scheduledMinutes = cronLocalMinutes(settings.cron.localTime);
-
-  if (currentLocal.minutes < scheduledMinutes) {
-    return "not_due";
-  }
-
-  const state = await readArxivState(userId);
-  if (hasRunForScheduledWindow(state.runs, settings, now, timeZone)) {
-    return "already_ran_today";
-  }
-
   return null;
 }
 
-function runOptions(request: NextRequest, settings: AppSettings) {
+function runOptions(
+  request: NextRequest,
+  settings: AppSettings,
+  trigger: "cron" | "manual",
+) {
   return {
     limit: Number(request.nextUrl.searchParams.get("limit") || 100),
     force: request.nextUrl.searchParams.get("force") === "1",
@@ -119,6 +66,7 @@ function runOptions(request: NextRequest, settings: AppSettings) {
       request.nextUrl.searchParams.get("reanalyze") === "existing" ||
       request.nextUrl.searchParams.get("existing") === "1",
     sourceUrl: settings.arxivDailyUrl,
+    trigger,
   };
 }
 
@@ -131,7 +79,7 @@ async function handleAutomatic(request: NextRequest) {
   const results = [];
 
   for (const user of users) {
-    const skipReason = await automaticRunSkipReason(user.userId, user.settings);
+    const skipReason = automaticRunSkipReason(user.settings);
     if (skipReason) {
       results.push({
         userId: user.userId,
@@ -149,7 +97,7 @@ async function handleAutomatic(request: NextRequest) {
     try {
       const result = await runArxivAnalysis(
         user.userId,
-        runOptions(request, user.settings),
+        runOptions(request, user.settings, "cron"),
       );
       results.push({
         userId: user.userId,
@@ -158,6 +106,15 @@ async function handleAutomatic(request: NextRequest) {
         analyzedPaperIds: result.papers.map((paper) => paper.id),
       });
     } catch (error) {
+      if (error instanceof AnalysisAlreadyRunningError) {
+        results.push({
+          userId: user.userId,
+          skipped: true,
+          reason: "already_running",
+          run: error.run,
+        });
+        continue;
+      }
       results.push({
         userId: user.userId,
         ok: false,
@@ -180,13 +137,27 @@ async function handleManual(request: NextRequest) {
   const settings = await readAppSettings(userId);
 
   try {
-    const result = await runArxivAnalysis(userId, runOptions(request, settings));
+    const result = await runArxivAnalysis(
+      userId,
+      runOptions(request, settings, "manual"),
+    );
     return NextResponse.json({
       ok: true,
       run: result.run,
       analyzedPaperIds: result.papers.map((paper) => paper.id),
     });
   } catch (error) {
+    if (error instanceof AnalysisAlreadyRunningError) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "already_running",
+          error: "已有分析任务正在运行",
+          run: error.run,
+        },
+        { status: 409 },
+      );
+    }
     return NextResponse.json(
       {
         ok: false,
