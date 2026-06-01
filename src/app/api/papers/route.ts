@@ -14,10 +14,9 @@ export const dynamic = "force-dynamic";
 
 const TIME_ZONE = process.env.APP_TIME_ZONE || "Asia/Shanghai";
 
-function parsePaperIds(url: URL): string[] | undefined {
+function parseIds(url: URL, names: readonly string[]): string[] | undefined {
   const values = [
-    ...url.searchParams.getAll("id"),
-    ...url.searchParams.getAll("ids"),
+    ...names.flatMap((name) => url.searchParams.getAll(name)),
   ]
     .flatMap((value) => value.split(","))
     .map((value) => value.trim())
@@ -26,13 +25,21 @@ function parsePaperIds(url: URL): string[] | undefined {
   return values.length ? Array.from(new Set(values)) : undefined;
 }
 
+function parsePaperIds(url: URL): string[] | undefined {
+  return parseIds(url, ["id", "ids"]);
+}
+
+function parseFavoriteIds(url: URL): string[] | undefined {
+  return parseIds(url, ["favoriteId", "favoriteIds"]);
+}
+
 export async function GET(request: NextRequest) {
   const auth = await requireAuthSession();
   if (!auth.ok) return auth.response;
 
   try {
     const url = new URL(request.url);
-    const filter = parseTagFilter(url.searchParams.get("tag"));
+    const filter = parseTagFilter(url.searchParams.getAll("tag"));
     const offset = normalizePageOffset(url.searchParams.get("offset"));
     const limit = normalizePageLimit(url.searchParams.get("limit"));
     const dateKey = normalizePaperDateKey(url.searchParams.get("date"));
@@ -42,6 +49,7 @@ export async function GET(request: NextRequest) {
       limit,
       dateKey: filter === "all" ? dateKey : null,
       timeZone: TIME_ZONE,
+      favoriteIds: parseFavoriteIds(url),
       paperIds: parsePaperIds(url),
     });
 

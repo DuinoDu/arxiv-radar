@@ -1,5 +1,10 @@
 import { PAPER_TAGS, type AnalysisRun, type AnalyzedPaper, type ArxivState, type PaperTag } from "./types";
-import type { TagFilter } from "./filters";
+import {
+  filterHasToggle,
+  selectedChatStatusFilters,
+  selectedTagIds,
+  type TagFilter,
+} from "./filters";
 
 export const PAPER_LIST_PAGE_SIZE = 40;
 export const PAPER_LIST_MAX_PAGE_SIZE = 80;
@@ -184,16 +189,24 @@ export function filterPapers(
     return result.slice();
   }
 
-  if (filter === "favorites") {
-    const favoriteIds = options.paperIds ?? options.favoriteIds ?? new Set<string>();
-    return result.filter((paper) => favoriteIds.has(paper.id));
+  if (filterHasToggle(filter, "favorites")) {
+    const favoriteIds = options.favoriteIds ?? new Set<string>();
+    result = result.filter((paper) => favoriteIds.has(paper.id));
   }
 
-  if (filter === "running_chat" || filter === "killed_chat") {
-    return options.paperIds ? result.slice() : [];
+  if (selectedChatStatusFilters(filter).length > 0 && !options.paperIds) {
+    return [];
   }
 
-  return result.filter((paper) => (paper.tags as string[]).includes(filter));
+  const tagIds = selectedTagIds(filter);
+  if (tagIds.length === 0) {
+    return result.slice();
+  }
+
+  return result.filter((paper) => {
+    const paperTags = paper.tags as string[];
+    return tagIds.every((tag) => paperTags.includes(tag));
+  });
 }
 
 export function getPaperListPage(
@@ -202,6 +215,7 @@ export function getPaperListPage(
   options: {
     offset?: number;
     limit?: number;
+    favoriteIds?: readonly string[];
     paperIds?: readonly string[];
     dateKey?: string | null;
     timeZone?: string;
@@ -209,7 +223,7 @@ export function getPaperListPage(
 ): PaperListPage {
   const offset = normalizePageOffset(options.offset);
   const limit = normalizePageLimit(options.limit);
-  const favoriteIds = new Set(state.favoriteIds);
+  const favoriteIds = new Set(options.favoriteIds ?? state.favoriteIds);
   const paperIds = options.paperIds?.length ? new Set(options.paperIds) : undefined;
   const filtered = filterPapers(getVisiblePapers(state), filter, {
     favoriteIds,

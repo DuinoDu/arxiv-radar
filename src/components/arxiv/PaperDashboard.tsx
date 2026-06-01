@@ -13,7 +13,19 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { buildTagLabels, parseTagFilter, type TagFilter } from "@/lib/arxiv/filters";
+import {
+  buildTagLabels,
+  filterHasTag,
+  filterHasToggle,
+  filtersEqual,
+  parseTagFilter,
+  selectedChatStatusFilters,
+  selectedTagIds,
+  serializeTagFilter,
+  toggleTagFilter,
+  toggleFilterToggle,
+  type TagFilter,
+} from "@/lib/arxiv/filters";
 import {
   PAPER_TAGS,
   type AnalysisRun,
@@ -247,22 +259,31 @@ function paperChatPath(paper: AnalyzedPaper) {
   return `/papers/${encodeURIComponent(paper.id)}/chat`;
 }
 
+function applyTagFilterParams(params: URLSearchParams, filter: TagFilter) {
+  params.delete("tag");
+  for (const value of serializeTagFilter(filter)) {
+    params.append("tag", value);
+  }
+}
+
 function filterHref(filter: TagFilter) {
-  return filter === "all" ? "/" : `/?tag=${filter}`;
+  const params = new URLSearchParams();
+  applyTagFilterParams(params, filter);
+  const query = params.toString();
+  return `/${query ? `?${query}` : ""}`;
 }
 
 function currentUrlForFilter(filter: TagFilter, date?: string | null) {
   const params = new URLSearchParams(window.location.search);
+  applyTagFilterParams(params, filter);
 
   if (filter === "all") {
-    params.delete("tag");
     if (date) {
       params.set("date", date);
     } else {
       params.delete("date");
     }
   } else {
-    params.set("tag", filter);
     params.delete("date");
   }
 
@@ -1040,7 +1061,7 @@ export function PaperDashboard({
   const tagIds = useMemo(() => tagConfigs.map((t) => t.id), [tagConfigs]);
   const dynamicLabels = useMemo(() => buildTagLabels(tagConfigs), [tagConfigs]);
   const tagIdSet = useMemo(() => new Set(tagIds), [tagIds]);
-  const [activeFilter, setActiveFilter] = useState(initialFilter);
+  const [activeFilter, setActiveFilter] = useState<TagFilter>(initialFilter);
   const [focusedPaperId, setFocusedPaperId] = useState<string | null>(null);
   const [editingPaperId, setEditingPaperId] = useState<string | null>(null);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
@@ -1106,23 +1127,29 @@ export function PaperDashboard({
       const append = options.append === true;
       const offset = options.offset ?? 0;
       const params = new URLSearchParams({
-        tag: filter,
         offset: String(offset),
         limit: String(PAPER_LIST_PAGE_SIZE),
       });
+      applyTagFilterParams(params, filter);
       const date = filter === "all" ? options.date ?? selectedDate : null;
+      const chatStatusFilters = selectedChatStatusFilters(filter);
       const ids =
         options.ids ??
-        (filter === "favorites"
-          ? Array.from(favorites)
-          : filter === "running_chat"
-            ? runningChatFilterIds
-            : filter === "killed_chat"
-              ? killedChatFilterIds
-              : undefined);
+        (chatStatusFilters.length > 0
+          ? Array.from(
+              new Set([
+                ...(chatStatusFilters.includes("running_chat") ? runningChatFilterIds : []),
+                ...(chatStatusFilters.includes("killed_chat") ? killedChatFilterIds : []),
+              ]),
+            )
+          : undefined);
 
       if (date) {
         params.set("date", date);
+      }
+
+      if (filterHasToggle(filter, "favorites")) {
+        params.set("favoriteIds", Array.from(favorites).join(","));
       }
 
       if (ids?.length) {
@@ -1444,42 +1471,82 @@ export function PaperDashboard({
   const favoritesCount = favorites.size > 0 ? favorites.size : summary.favoriteCount;
   const runningChatCount = runningChatFilterIds.length;
   const killedChatCount = killedChatFilterIds.length;
+  const activeTagIds = useMemo(() => selectedTagIds(activeFilter), [activeFilter]);
+  const activeChatStatusFilters = useMemo(
+    () => selectedChatStatusFilters(activeFilter),
+    [activeFilter],
+  );
+  const activeFavoritesFilter = filterHasToggle(activeFilter, "favorites");
   const visiblePapers = useMemo(() => {
     if (activeFilter === "all") {
       return papers;
     }
 
-    if (activeFilter === "favorites") {
-      return papers.filter((paper) => favorites.has(paper.id));
+    let result = papers;
+
+    if (activeFavoritesFilter) {
+      result = result.filter((paper) => favorites.has(paper.id));
     }
 
-    if (activeFilter === "running_chat") {
-      return papers.filter(
-        (paper) => runningChatPaperIds.has(paper.id) && !killedChatPaperIds.has(paper.id),
+    if (activeChatStatusFilters.length > 0) {
+      result = result.filter(
+        (paper) =>
+          (activeChatStatusFilters.includes("running_chat") &&
+            runningChatPaperIds.has(paper.id) &&
+            !killedChatPaperIds.has(paper.id)) ||
+          (activeChatStatusFilters.includes("killed_chat") &&
+            killedChatPaperIds.has(paper.id)),
       );
     }
 
-    if (activeFilter === "killed_chat") {
-      return papers.filter((paper) => killedChatPaperIds.has(paper.id));
+    if (activeTagIds.length > 0) {
+      result = result.filter((paper) => {
+        const paperTags = paper.tags as string[];
+        return activeTagIds.every((tag) => paperTags.includes(tag));
+      });
     }
 
-    return papers.filter((paper) => (paper.tags as string[]).includes(activeFilter));
-  }, [activeFilter, favorites, killedChatPaperIds, papers, runningChatPaperIds]);
-  const listTitle =
-    activeFilter === "all"
-      ? "论文列表"
-      : activeFilter === "favorites"
-        ? "收藏论文"
-        : activeFilter === "running_chat"
-          ? "运行中 chat 论文"
-          : activeFilter === "killed_chat"
-            ? "已停止 chat 论文"
-            : `${dynamicLabels[activeFilter] ?? activeFilter} 论文`;
+    return result;
+  }, [
+    activeChatStatusFilters,
+    activeFavoritesFilter,
+    activeFilter,
+    activeTagIds,
+    favorites,
+    killedChatPaperIds,
+    papers,
+    runningChatPaperIds,
+  ]);
+  const listTitle = useMemo(() => {
+    if (activeFilter === "all") {
+      return "论文列表";
+    }
+
+    const parts = [
+      activeFavoritesFilter ? "收藏" : null,
+      activeTagIds.length > 0
+        ? activeTagIds.map((tag) => dynamicLabels[tag] ?? tag).join(" + ")
+        : null,
+      activeChatStatusFilters.length > 0
+        ? activeChatStatusFilters
+            .map((status) => (status === "running_chat" ? "运行中 chat" : "已停止 chat"))
+            .join(" / ")
+        : null,
+    ].filter(Boolean);
+
+    return `${parts.join(" + ")} 论文`;
+  }, [
+    activeChatStatusFilters,
+    activeFavoritesFilter,
+    activeFilter,
+    activeTagIds,
+    dynamicLabels,
+  ]);
 
   useEffect(() => {
     function handlePopState() {
       const params = new URLSearchParams(window.location.search);
-      const nextFilter = parseTagFilter(params.get("tag"), tagIdSet);
+      const nextFilter = parseTagFilter(params.getAll("tag"), tagIdSet);
       const requestedDate = normalizePaperDateKey(params.get("date"));
       const nextDate =
         nextFilter === "all"
@@ -1565,11 +1632,7 @@ export function PaperDashboard({
   }, [summary.totalPapers]);
 
   useEffect(() => {
-    if (
-      activeFilter !== "favorites" &&
-      activeFilter !== "running_chat" &&
-      activeFilter !== "killed_chat"
-    ) {
+    if (!activeFavoritesFilter && activeChatStatusFilters.length === 0) {
       return;
     }
 
@@ -1577,7 +1640,15 @@ export function PaperDashboard({
       void loadPaperPage(activeFilter, { append: false, offset: 0 });
     }, 0);
     return () => window.clearTimeout(timeoutId);
-  }, [activeFilter, favorites, killedChatPaperIds, loadPaperPage, runningChatPaperIds]);
+  }, [
+    activeChatStatusFilters,
+    activeFavoritesFilter,
+    activeFilter,
+    favorites,
+    killedChatPaperIds,
+    loadPaperPage,
+    runningChatPaperIds,
+  ]);
 
   useEffect(() => {
     const sentinel = loadSentinelRef.current;
@@ -1686,7 +1757,7 @@ export function PaperDashboard({
   function selectFilter(filter: TagFilter) {
     const nextDate = filter === "all" ? latestPaperDate : null;
 
-    if (filter === activeFilter && (filter !== "all" || selectedDate === nextDate)) {
+    if (filtersEqual(filter, activeFilter) && (filter !== "all" || selectedDate === nextDate)) {
       setMobileFiltersOpen(false);
       return;
     }
@@ -1767,35 +1838,40 @@ export function PaperDashboard({
               label="全部"
               onSelect={selectFilter}
             />
-            {tagConfigs.map((tc) => (
-              <FilterLink
-                key={tc.id}
-                active={activeFilter === tc.id}
-                count={countsByTag[tc.id] ?? 0}
-                filter={tc.id}
-                icon={<Tag className="h-4 w-4" aria-hidden="true" />}
-                label={tc.label}
-                onSelect={selectFilter}
-              />
-            ))}
+            {tagConfigs.map((tc) => {
+              const active = filterHasTag(activeFilter, tc.id);
+              const nextFilter = toggleTagFilter(activeFilter, tc.id, tagIds);
+
+              return (
+                <FilterLink
+                  key={tc.id}
+                  active={active}
+                  count={countsByTag[tc.id] ?? 0}
+                  filter={nextFilter}
+                  icon={<Tag className="h-4 w-4" aria-hidden="true" />}
+                  label={tc.label}
+                  onSelect={selectFilter}
+                />
+              );
+            })}
             <FilterLink
-              active={activeFilter === "favorites"}
+              active={activeFavoritesFilter}
               count={favoritesCount}
-              filter="favorites"
+              filter={toggleFilterToggle(activeFilter, "favorites")}
               icon={
                 <Heart
                   className="h-4 w-4"
                   aria-hidden="true"
-                  fill={activeFilter === "favorites" ? "currentColor" : "none"}
+                  fill={activeFavoritesFilter ? "currentColor" : "none"}
                 />
               }
               label="收藏"
               onSelect={selectFilter}
             />
             <FilterLink
-              active={activeFilter === "running_chat"}
+              active={activeChatStatusFilters.includes("running_chat")}
               count={runningChatCount}
-              filter="running_chat"
+              filter={toggleFilterToggle(activeFilter, "running_chat")}
               icon={<ChatStatusDot status="running" />}
               ariaLabel="运行中的 chat"
               label="chat"
@@ -1803,9 +1879,9 @@ export function PaperDashboard({
               onSelect={selectFilter}
             />
             <FilterLink
-              active={activeFilter === "killed_chat"}
+              active={activeChatStatusFilters.includes("killed_chat")}
               count={killedChatCount}
-              filter="killed_chat"
+              filter={toggleFilterToggle(activeFilter, "killed_chat")}
               icon={<ChatStatusDot status="killed" />}
               ariaLabel="已停止的 chat"
               label="chat"
@@ -1818,7 +1894,7 @@ export function PaperDashboard({
 
       <div className="mx-auto max-w-7xl px-3 py-3 sm:px-6 md:py-5 lg:px-8">
         <div className="mb-3 hidden items-center justify-between gap-3 md:flex">
-          <h2 className="text-lg font-semibold tracking-normal">{listTitle}</h2>
+          <h2 className="min-w-0 truncate text-lg font-semibold tracking-normal">{listTitle}</h2>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
             {visiblePapers.length} / {listTotal}
           </p>
