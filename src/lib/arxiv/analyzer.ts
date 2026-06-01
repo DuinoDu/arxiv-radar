@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { compactText, extractGithubUrl, fetchPaperFullText, type PaperFullText } from "./fulltext";
+import type { RunLogger } from "./run-logger";
 import type { AnalyzedPaper, ArxivArticle, PaperTag, PaperTagSource } from "./types";
 
 const DEFAULT_MODEL = "gpt-4o-mini";
@@ -341,11 +342,27 @@ async function analyzeArticleWithModel(article: ArxivArticle, fullText: PaperFul
 export async function analyzeArticle(
   article: ArxivArticle,
   runId: string,
+  logger?: RunLogger,
 ): Promise<AnalyzedPaper> {
+  logger?.info(`fetching full text for ${article.id}`, article.id);
   const fullText = await fetchPaperFullText(article);
+  logger?.info(
+    `full text status=${fullText.status}${fullText.url ? ` url=${fullText.url}` : ""}${
+      fullText.error ? ` error=${fullText.error}` : ""
+    }`,
+    article.id,
+  );
+  logger?.info(`calling LLM analyzer (model=${getOpenAiModel()})`, article.id);
   const analysis = await analyzeArticleWithModel(article, fullText);
   const { tags, tagEvidence, tagConfidence, tagSource } = toTags(analysis, fullText);
   const githubUrl = fullText.githubUrl || extractGithubUrl(article.abstract, fullText.text);
+  logger?.info(
+    `analyzer returned tags=[${tags.join(", ") || "(none)"}]` +
+      (typeof analysis.confidence === "number"
+        ? ` confidence=${analysis.confidence.toFixed(2)}`
+        : ""),
+    article.id,
+  );
 
   return {
     ...article,
@@ -374,6 +391,7 @@ export async function analyzeArticles(
   articles: ArxivArticle[],
   runId: string,
   concurrency = Number(process.env.OPENAI_CONCURRENCY || 3),
+  logger?: RunLogger,
 ) {
   const results: AnalysisResult[] = new Array(articles.length);
   const workerCount = Number.isFinite(concurrency)
@@ -386,15 +404,21 @@ export async function analyzeArticles(
       const index = nextIndex;
       nextIndex += 1;
       const article = articles[index];
+      const ordinal = `${index + 1}/${articles.length}`;
+
+      logger?.info(`[${ordinal}] start: ${article.title}`, article.id);
 
       try {
-        results[index] = {
-          paper: await analyzeArticle(article, runId),
-        };
+        const paper = await analyzeArticle(article, runId, logger);
+        results[index] = { paper };
+        logger?.info(
+          `[${ordinal}] done: tags=[${paper.tags.join(", ") || "(none)"}]`,
+          article.id,
+        );
       } catch (error) {
-        results[index] = {
-          error: (error as Error).message,
-        };
+        const message = (error as Error).message;
+        results[index] = { error: message };
+        logger?.error(`[${ordinal}] failed: ${message}`, article.id);
       }
     }
   }
