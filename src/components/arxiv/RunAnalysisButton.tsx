@@ -6,6 +6,16 @@ import { AlertCircle, CheckCircle2, Loader2, Play } from "lucide-react";
 
 type RunState = "idle" | "running" | "done" | "error";
 
+interface RunAnalysisPayload {
+  ok?: boolean;
+  error?: string;
+  run?: {
+    analyzedCount?: number;
+    skippedAlreadyProcessedCount?: number;
+    failedCount?: number;
+  };
+}
+
 export function RunAnalysisButton({ disabled = false }: { disabled?: boolean }) {
   const router = useRouter();
   const [state, setState] = useState<RunState>("idle");
@@ -23,14 +33,22 @@ export function RunAnalysisButton({ disabled = false }: { disabled?: boolean }) 
       const response = await fetch("/api/cron/arxiv", {
         method: "POST",
       });
-      const payload = await response.json();
+      const payload = (await response.json()) as RunAnalysisPayload;
 
       if (!response.ok || !payload.ok) {
         throw new Error(payload.error || "Analysis failed");
       }
 
+      const analyzedCount = payload.run?.analyzedCount ?? 0;
+      const skippedCount = payload.run?.skippedAlreadyProcessedCount ?? 0;
+      const failedCount = payload.run?.failedCount ?? 0;
+      const resultParts = [`新增 ${analyzedCount} 篇`, `跳过 ${skippedCount} 篇`];
+      if (failedCount > 0) {
+        resultParts.push(`失败 ${failedCount} 篇`);
+      }
+
       setState("done");
-      setMessage(`新增 ${payload.run.analyzedCount} 篇，跳过 ${payload.run.skippedAlreadyProcessedCount} 篇`);
+      setMessage(resultParts.join("，"));
       router.refresh();
     } catch (error) {
       setState("error");

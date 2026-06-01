@@ -178,17 +178,18 @@ export async function runBackfillTag(tag) {
 
   const databaseUrl = process.env.DATABASE_URL;
   const userId = process.env.ARXIV_USER_ID;
+  const hasDeepSeekConfig = Boolean(process.env.DEEPSEEK_API_KEY?.trim() || process.env.DEEPSEEK_BASE_URL?.trim());
   const openAiConfig = {
-    baseUrl: ((process.env.OPENAI_URL || "https://api.openai.com/v1").trim()).replace(/\/+$/, ""),
-    apiKey: process.env.OPENAI_API_KEY?.trim(),
-    model: (process.env.OPENAI_MODEL || "gpt-4o-mini").trim(),
+    baseUrl: ((process.env.DEEPSEEK_BASE_URL || process.env.OPENAI_URL || "https://api.openai.com/v1").trim()).replace(/\/+$/, ""),
+    apiKey: process.env.DEEPSEEK_API_KEY?.trim() || process.env.OPENAI_API_KEY?.trim(),
+    model: (hasDeepSeekConfig ? process.env.DEEPSEEK_MODEL || "deepseek-chat" : process.env.OPENAI_MODEL || "gpt-4o-mini").trim(),
   };
   const concurrency = Math.max(1, Number(process.env.BACKFILL_CONCURRENCY || 3));
   const dryRun = process.env.BACKFILL_DRY_RUN === "1";
 
   if (!databaseUrl) throw new Error("DATABASE_URL is not configured");
   if (!userId) throw new Error("ARXIV_USER_ID is required for user-scoped backfill");
-  if (!openAiConfig.apiKey) throw new Error("OPENAI_API_KEY is not configured");
+  if (!openAiConfig.apiKey) throw new Error("DEEPSEEK_API_KEY or OPENAI_API_KEY is not configured");
 
   const pool = new Pool({ connectionString: databaseUrl });
   try {

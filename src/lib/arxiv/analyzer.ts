@@ -3,6 +3,7 @@ import { compactText, extractGithubUrl, fetchPaperFullText, type PaperFullText }
 import type { AnalyzedPaper, ArxivArticle, PaperTag, PaperTagSource } from "./types";
 
 const DEFAULT_MODEL = "gpt-4o-mini";
+const DEFAULT_DEEPSEEK_MODEL = "deepseek-chat";
 const DEFAULT_OPENAI_URL = "https://api.openai.com/v1";
 const TagSourceSchema = z.enum(["title", "abstract", "full_text"]);
 const TagSourceFieldSchema = z.preprocess(
@@ -105,16 +106,24 @@ function readEnv(name: string) {
   return typeof value === "string" ? value.trim() : value;
 }
 
+function hasDeepSeekConfig() {
+  return Boolean(readEnv("DEEPSEEK_API_KEY") || readEnv("DEEPSEEK_BASE_URL"));
+}
+
 function getOpenAiBaseUrl() {
-  return (readEnv("OPENAI_URL") || DEFAULT_OPENAI_URL).replace(/\/+$/, "");
+  return (readEnv("DEEPSEEK_BASE_URL") || readEnv("OPENAI_URL") || DEFAULT_OPENAI_URL).replace(/\/+$/, "");
 }
 
 function getOpenAiModel() {
+  if (hasDeepSeekConfig()) {
+    return readEnv("DEEPSEEK_MODEL") || DEFAULT_DEEPSEEK_MODEL;
+  }
+
   return readEnv("OPENAI_MODEL") || DEFAULT_MODEL;
 }
 
 function getOpenAiApiKey() {
-  return readEnv("OPENAI_API_KEY");
+  return readEnv("DEEPSEEK_API_KEY") || readEnv("OPENAI_API_KEY");
 }
 
 function compactAbstract(abstract: string) {
@@ -186,7 +195,7 @@ function extractJson(text: string) {
 async function requestAnalysis(article: ArxivArticle, fullText: PaperFullText, useJsonMode: boolean) {
   const apiKey = getOpenAiApiKey();
   if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is not configured");
+    throw new Error("DEEPSEEK_API_KEY or OPENAI_API_KEY is not configured");
   }
 
   const body = {

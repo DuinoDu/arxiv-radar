@@ -55,6 +55,7 @@ Set these in `.env.local` (see `.env.example` for the full list):
 | Variable | Description |
 | --- | --- |
 | `DATABASE_URL` | PostgreSQL connection string |
+| `DEEPSEEK_BASE_URL` / `DEEPSEEK_API_KEY` / `DEEPSEEK_MODEL` | DeepSeek endpoint used for analysis; defaults model to `deepseek-chat` when `DEEPSEEK_*` is configured |
 | `OPENAI_URL` / `OPENAI_API_KEY` / `OPENAI_MODEL` | LLM endpoint used for analysis |
 | `APP_URL` | This app's public URL |
 | `CONDUCTOR_BASE_URL` | Conductor SSO base URL |

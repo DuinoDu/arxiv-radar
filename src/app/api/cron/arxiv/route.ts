@@ -70,6 +70,10 @@ function hasRunForScheduledWindow(
   const scheduledMinutes = cronLocalMinutes(settings.cron.localTime);
 
   return runs.some((run) => {
+    if (run.status !== "completed" || run.failedCount > 0) {
+      return false;
+    }
+
     const runLocal = localParts(new Date(run.startedAt), timeZone);
     return (
       runLocal.dateKey === currentLocal.dateKey &&

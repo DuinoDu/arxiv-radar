@@ -63,6 +63,15 @@ function selectNewArticles(
   };
 }
 
+function allAnalysisFailedMessage(failures: { id: string; title: string; error: string }[]) {
+  const firstFailure = failures[0];
+  const firstFailureLabel = firstFailure
+    ? ` First failure (${firstFailure.id}): ${firstFailure.error}`
+    : "";
+
+  return `Analysis failed for all ${failures.length} new paper(s).${firstFailureLabel}`;
+}
+
 async function runArxivAnalysisInternal(
   userId: string,
   options: RunArxivAnalysisOptions = {},
@@ -94,10 +103,19 @@ async function runArxivAnalysisInternal(
         );
 
     const { papers, failures } = await analyzeArticles(articlesToAnalyze, run.id);
+    const allAttemptedPapersFailed =
+      articlesToAnalyze.length > 0 &&
+      papers.length === 0 &&
+      failures.length === articlesToAnalyze.length;
+    const failureMessage = allAttemptedPapersFailed
+      ? allAnalysisFailedMessage(failures)
+      : failures.length > 0
+        ? `Completed with ${failures.length} paper analysis failure(s).`
+        : undefined;
 
     run = {
       ...run,
-      status: "completed",
+      status: allAttemptedPapersFailed ? "failed" : "completed",
       finishedAt: new Date().toISOString(),
       fetchedCount: articles.length,
       skippedAlreadyProcessedCount: skippedIds.length,
@@ -105,13 +123,14 @@ async function runArxivAnalysisInternal(
       failedCount: failures.length,
       skippedIds,
       failedPapers: failures,
-      message:
-        failures.length > 0
-          ? `Completed with ${failures.length} paper analysis failure(s).`
-          : undefined,
+      message: failureMessage,
     };
 
     await finishRun(userId, run, papers);
+
+    if (allAttemptedPapersFailed) {
+      throw new Error(failureMessage);
+    }
 
     return {
       run,
