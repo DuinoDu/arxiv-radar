@@ -1324,6 +1324,47 @@ export async function runBelongsToUser(userId: string, runId: string): Promise<b
   return Boolean(result.rows[0]?.exists);
 }
 
+export async function findRunForUser(
+  userId: string,
+  runId: string,
+): Promise<AnalysisRun | null> {
+  const id = normalizedUserId(userId);
+  const result = await query<RunRow>(
+    `
+      SELECT
+        id,
+        source_url,
+        started_at,
+        finished_at,
+        status,
+        fetched_count,
+        skipped_already_processed_count,
+        analyzed_count,
+        failed_count,
+        skipped_ids,
+        message
+      FROM user_analysis_runs
+      WHERE user_id = $1 AND id = $2
+    `,
+    [id, runId],
+  );
+
+  const row = result.rows[0];
+  if (!row) return null;
+
+  const failuresResult = await query<FailureRow>(
+    `
+      SELECT run_id, paper_id, title, error
+      FROM user_analysis_failures
+      WHERE user_id = $1 AND run_id = $2
+      ORDER BY id ASC
+    `,
+    [id, runId],
+  );
+
+  return runFromRow(row, failuresResult.rows);
+}
+
 export async function finishRun(
   userId: string,
   run: AnalysisRun,
