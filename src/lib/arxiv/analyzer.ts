@@ -382,7 +382,7 @@ export async function analyzeArticle(
     githubUrl,
     model: getOpenAiModel(),
     confidence: analysis.confidence,
-    analyzedAt: new Date().toISOString(),
+    analyzedAt: article.publishedAt ?? new Date().toISOString(),
     runId,
   };
 }
