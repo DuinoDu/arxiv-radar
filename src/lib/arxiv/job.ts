@@ -1,3 +1,4 @@
+import { query } from "@/lib/db/postgres";
 import { analyzeArticles } from "./analyzer";
 import { ARXIV_RECENT_URL, fetchArticleMetadata, fetchRecentArticleIds } from "./fetcher";
 import { createRunLogger } from "./run-logger";
@@ -94,10 +95,30 @@ function allAnalysisFailedMessage(failures: { id: string; title: string; error: 
   return `Analysis failed for all ${failures.length} new paper(s).${firstFailureLabel}`;
 }
 
+async function cleanupStaleRuns(userId: string) {
+  const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+  await query(
+    `
+      UPDATE user_analysis_runs
+      SET status = 'failed',
+          finished_at = now(),
+          message = COALESCE(message, '任务超时（实例被终止）')
+      WHERE user_id = $1
+        AND status = 'running'
+        AND started_at <= $2
+    `,
+    [userId, cutoff],
+  );
+}
+
 async function runArxivAnalysisInternal(
   userId: string,
   options: RunArxivAnalysisOptions = {},
 ): Promise<RunArxivAnalysisResult> {
+  // Clean up stale runs left behind by previous serverless terminations
+  // before checking for an active one.
+  await cleanupStaleRuns(userId);
+
   // Cross-instance / cross-tab guard: even if the in-process activeRuns map
   // misses (different serverless instance, page refresh between clicks, …),
   // the DB still has an authoritative `running` row that we can detect and
