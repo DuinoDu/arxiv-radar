@@ -7,7 +7,6 @@ import { requireAuthSession } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 120;
 
 interface ManualPaperBody {
   input?: string;

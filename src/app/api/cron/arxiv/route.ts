@@ -7,7 +7,6 @@ import { requireAuthSession } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 1800;
 
 function isAuthorized(request: NextRequest) {
   const secret = process.env.CRON_SECRET;

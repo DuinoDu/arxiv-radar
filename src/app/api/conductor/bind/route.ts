@@ -22,8 +22,8 @@
  * via a module-level Map so the second tab awaits and gets the first
  * tab's taskId.
  *
- * Caveat: this dedup is **single-process**. On Vercel (or any autoscaled
- * serverless deploy) two concurrent requests can land on different Node
+ * Caveat: this dedup is **single-process**. On an autoscaled serverless
+ * deploy, two concurrent requests can land on different Node
  * instances and both will pass the recheck; both can create a Conductor task,
  * and the later database upsert can replace the earlier task mapping. If it
  * becomes material, replace this section with a real per-user-paper advisory

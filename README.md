@@ -8,13 +8,10 @@ Auto-fetches new arXiv papers every day, analyzes them with an AI, auto-tags the
 
 And most important, it is FREE.
 
-[**Website → arxiv-radar.vercel.app**](https://arxiv-radar.vercel.app/)
-
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-19-149eca?logo=react)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6?logo=typescript)](https://www.typescriptlang.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Deploy on Vercel](https://img.shields.io/badge/Deploy-Vercel-black?logo=vercel)](https://vercel.com/)
 
 </div>
 
@@ -76,17 +73,7 @@ npm run cron                         # trigger the auto cron once locally
 npm run worker                       # local worker, polls every 5 min
 ```
 
-On Vercel, `vercel.json` schedules `*/5 * * * *`; actual run times come from each user's settings and `APP_TIME_ZONE`.
-
-## Deploy to Vercel
-
-```bash
-npm run lint
-npm run build
-vercel --prod
-```
-
-Set `DATABASE_URL`, the `OPENAI_*` and Conductor SSO variables, and `CRON_SECRET` in your Vercel project, then run `npm run db:migrate`.
+Use `npm run worker` or an external scheduler to call the cron endpoint. Per-user run times come from each user's settings and `APP_TIME_ZONE`.
 
 ## Tech Stack
 

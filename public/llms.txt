@@ -2,7 +2,6 @@
 
 > Your daily AI-powered radar for robotics research. arxiv-radar auto-fetches new arXiv papers on a per-user schedule, analyzes each one with an LLM (summary, hypothesis, method, problem, conclusion), auto-tags the topics you care about, and lets you chat with any paper. Every user gets isolated papers, tags, settings, and schedules.
 
-Website: https://arxiv-radar.vercel.app/
 Tech: Next.js 16 · React 19 · TypeScript · Tailwind CSS v4 · PostgreSQL · Conductor SSO · OpenAI-compatible LLM
 
 This file explains how to use arxiv-radar and how to configure it, for both end users (in-app settings) and operators (deployment env vars). UI labels are shown in Chinese because the app interface is in Chinese.
@@ -84,9 +83,8 @@ npm run dev                  # http://localhost:3000
 - `npm run cron` — trigger the auto cron once locally.
 - `npm run worker` — local worker, polls every 5 minutes.
 
-On Vercel, `vercel.json` schedules `*/5 * * * *`; actual run times come from each user's settings and `APP_TIME_ZONE`.
+Use `npm run worker` or an external scheduler to call the cron endpoint. Actual run times come from each user's settings and `APP_TIME_ZONE`.
 
 ## Links
 
-- Website: https://arxiv-radar.vercel.app/
 - Source & full docs: see the project `README.md`.
