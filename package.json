@@ -8,11 +8,13 @@
     "start": "next start",
     "lint": "eslint",
     "db:migrate": "node scripts/db-migrate.mjs",
+    "db:sync-sqlite": "node scripts/pg-to-sqlite.mjs",
     "cron": "node scripts/run-arxiv-cron.mjs",
     "worker": "node scripts/daily-arxiv-worker.mjs"
   },
   "dependencies": {
     "@love-moon/app-sdk": "^0.5.0",
+    "better-sqlite3": "^12.10.0",
     "cheerio": "^1.2.0",
     "lucide-react": "^1.14.0",
     "next": "^16.2.6",
@@ -26,6 +28,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/pg": "^8.20.0",
     "@types/react": "^19",
@@ -34,5 +37,10 @@
     "eslint-config-next": "16.1.2",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3"
+    ]
   }
 }

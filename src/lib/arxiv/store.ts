@@ -1,7 +1,7 @@
 import type { PoolClient, QueryResult, QueryResultRow } from "pg";
 import { createEnvAppSettings, normalizeAppSettings } from "@/lib/app-settings";
 import type { AuthUser } from "@/lib/auth/session";
-import { query, transaction } from "@/lib/db/postgres";
+import { query, transaction } from "@/lib/db";
 import {
   type AnalysisRun,
   type AnalysisRunLogEntry,
@@ -129,8 +129,18 @@ function dbQuery<T extends QueryResultRow>(
 }
 
 function stringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === "string");
+  // Postgres jsonb columns arrive already parsed; SQLite returns them as TEXT,
+  // so parse JSON strings before filtering.
+  let parsed = value;
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter((item): item is string => typeof item === "string");
 }
 
 function numberOrNull(value: number | undefined) {
@@ -181,6 +191,14 @@ function settingsWithInitialConductorBaseUrl(options: UserOptions = {}) {
 }
 
 function parseTagConfigs(value: unknown): TagConfig[] | undefined {
+  // SQLite returns the jsonb-equivalent column as a TEXT string.
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return undefined;
+    }
+  }
   if (!Array.isArray(value)) return undefined;
   const result: TagConfig[] = [];
   for (const item of value) {
@@ -195,7 +213,7 @@ function settingsFromRow(row: SettingsRow): AppSettings {
   return normalizeAppSettings({
     arxivDailyUrl: row.arxiv_daily_url,
     cron: {
-      enabled: row.cron_enabled,
+      enabled: Boolean(row.cron_enabled),
       localTime: row.cron_local_time,
     },
     conductor: {
@@ -397,7 +415,7 @@ function paperFromRow(row: PaperRow, tagRows: TagRow[] = []): AnalyzedPaper {
     confidence: row.confidence ?? undefined,
     analyzedAt: row.analyzed_at,
     runId: row.run_id,
-    removed: row.removed,
+    removed: Boolean(row.removed),
   };
 }
 
@@ -1211,42 +1229,25 @@ export async function appendRunLogs(
   if (entries.length === 0) return;
 
   const id = normalizedUserId(userId);
-  const userIds: string[] = [];
-  const runIds: string[] = [];
-  const timestamps: string[] = [];
-  const levels: AnalysisRunLogLevel[] = [];
-  const paperIds: (string | null)[] = [];
-  const messages: string[] = [];
+  const params: unknown[] = [];
+  const tuples: string[] = [];
 
   for (const entry of entries) {
-    userIds.push(id);
-    runIds.push(runId);
-    timestamps.push(entry.ts);
-    levels.push(entry.level);
-    paperIds.push(entry.paperId ?? null);
-    messages.push(entry.message);
+    const base = params.length;
+    tuples.push(
+      `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`,
+    );
+    params.push(id, runId, entry.ts, entry.level, entry.paperId ?? null, entry.message);
   }
 
+  // Portable multi-row INSERT: native `$n` on Postgres, translated to `?` on
+  // SQLite. Replaces the Postgres-only UNNEST(...) bulk-insert form.
   await query(
     `
       INSERT INTO user_analysis_run_logs(user_id, run_id, ts, level, paper_id, message)
-      SELECT
-        user_id,
-        run_id,
-        ts::timestamptz,
-        level,
-        paper_id,
-        message
-      FROM UNNEST(
-        $1::text[],
-        $2::text[],
-        $3::text[],
-        $4::text[],
-        $5::text[],
-        $6::text[]
-      ) AS t(user_id, run_id, ts, level, paper_id, message)
+      VALUES ${tuples.join(", ")}
     `,
-    [userIds, runIds, timestamps, levels, paperIds, messages],
+    params,
   );
 }
 
@@ -1311,17 +1312,16 @@ export async function findActiveRunForUser(
 }
 
 export async function runBelongsToUser(userId: string, runId: string): Promise<boolean> {
-  const result = await query<{ exists: boolean }>(
+  const result = await query<{ present: number }>(
     `
-      SELECT EXISTS (
-        SELECT 1
-        FROM user_analysis_runs
-        WHERE user_id = $1 AND id = $2
-      ) AS exists
+      SELECT 1 AS present
+      FROM user_analysis_runs
+      WHERE user_id = $1 AND id = $2
+      LIMIT 1
     `,
     [normalizedUserId(userId), runId],
   );
-  return Boolean(result.rows[0]?.exists);
+  return (result.rowCount ?? result.rows.length) > 0;
 }
 
 export async function findRunForUser(

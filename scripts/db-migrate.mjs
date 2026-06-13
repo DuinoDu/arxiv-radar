@@ -2,12 +2,10 @@ import { promises as fs } from "node:fs";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import pg from "pg";
-
-const { Pool } = pg;
 
 const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const migrationsDir = path.join(rootDir, "db", "migrations");
+const sqliteMigrationsDir = path.join(rootDir, "db", "sqlite");
 
 function loadEnvFromFile(filePath) {
   let raw;
@@ -44,9 +42,65 @@ if (!databaseUrl) {
   process.exit(1);
 }
 
-const pool = new Pool({
-  connectionString: databaseUrl,
-});
+const isPostgres = /^postgres(ql)?:\/\//i.test(databaseUrl);
+
+function sqliteFilePath(url) {
+  let raw = url;
+  for (const prefix of ["sqlite://", "sqlite:", "file://", "file:"]) {
+    if (raw.startsWith(prefix)) {
+      raw = raw.slice(prefix.length);
+      break;
+    }
+  }
+  if (!raw || raw === ":memory:") return ":memory:";
+  return path.isAbsolute(raw) ? raw : path.join(rootDir, raw);
+}
+
+async function migrateSqlite() {
+  const { default: Database } = await import("better-sqlite3");
+  const { mkdirSync } = await import("node:fs");
+  const file = sqliteFilePath(databaseUrl);
+  if (file !== ":memory:") mkdirSync(path.dirname(file), { recursive: true });
+  const db = new Database(file);
+  db.pragma("journal_mode = WAL");
+  db.pragma("foreign_keys = ON");
+  db.exec(
+    `CREATE TABLE IF NOT EXISTS schema_migrations (
+       version text PRIMARY KEY,
+       applied_at text NOT NULL DEFAULT CURRENT_TIMESTAMP
+     )`,
+  );
+  const applied = new Set(
+    db.prepare("SELECT version FROM schema_migrations").all().map((r) => r.version),
+  );
+  const files = (await fs.readdir(sqliteMigrationsDir))
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
+  for (const fileName of files) {
+    const version = fileName.replace(/\.sql$/, "");
+    if (applied.has(version)) {
+      console.log(`skip ${version}`);
+      continue;
+    }
+    const sql = await fs.readFile(path.join(sqliteMigrationsDir, fileName), "utf8");
+    const tx = db.transaction(() => {
+      db.exec(sql);
+      db.prepare("INSERT INTO schema_migrations(version) VALUES (?)").run(version);
+    });
+    tx();
+    console.log(`applied ${version}`);
+  }
+  db.close();
+  console.log(`SQLite schema ready at ${file}`);
+}
+
+const { Pool } = isPostgres ? await import("pg").then((m) => m.default) : {};
+
+const pool = isPostgres
+  ? new Pool({
+      connectionString: databaseUrl,
+    })
+  : null;
 
 async function ensureSchemaMigrations(client) {
   await client.query(`
@@ -100,7 +154,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
+const entry = isPostgres ? main() : migrateSqlite();
+
+entry.catch((error) => {
   console.error(error);
   process.exit(1);
 });

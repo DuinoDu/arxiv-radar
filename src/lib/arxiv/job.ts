@@ -1,4 +1,4 @@
-import { query } from "@/lib/db/postgres";
+import { query } from "@/lib/db";
 import { analyzeArticles } from "./analyzer";
 import { ARXIV_RECENT_URL, fetchArticleMetadata, fetchRecentArticleIds } from "./fetcher";
 import { createRunLogger } from "./run-logger";
