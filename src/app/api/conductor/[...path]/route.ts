@@ -207,6 +207,11 @@ async function startEventStream(
 
   let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
   let closed = false;
+  // Set true only when the upstream subscribe iterator drains to completion
+  // (StopAsyncIteration) — i.e. the reply/turn finished server-side. NOT set
+  // when we `break` out for a client abort or a dead downstream. We use it to
+  // decide whether it's safe to synthesize a terminal runtime_status below.
+  let upstreamCompleted = false;
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -249,6 +254,12 @@ async function startEventStream(
           );
           if (!ok) break;
         }
+        // Loop exited without break/throw → the upstream stream drained
+        // cleanly (reply/turn done). Flag it so `finally` can resync the
+        // widget composer (see the synthetic runtime_status emit there).
+        if (!closed && !req.signal.aborted) {
+          upstreamCompleted = true;
+        }
       } catch (err) {
         const code =
           err instanceof ConductorAppError ? err.code : "subscribe_failed";
@@ -275,6 +286,23 @@ async function startEventStream(
         };
         safeEnqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
       } finally {
+        // The widget's composer button is driven purely by the SDK's
+        // in-memory `runtime.replyInProgress`, which it only ever clears on a
+        // live `runtime_status{replyInProgress:false}` / `task_finished`
+        // event — never from history catch-up or a task-status snapshot. If
+        // the upstream stream ends after a reply without us relaying that
+        // terminal status (e.g. a per-reply subscribe that just drains), the
+        // browser is left stuck showing "停止" and can't send. When the
+        // upstream completed cleanly, synthesize the reset so the composer
+        // returns to "发送". Gated on `upstreamCompleted` so a client abort
+        // or a mid-reply drop never falsely unlocks the input.
+        if (upstreamCompleted && !closed && !req.signal.aborted) {
+          const reset = {
+            type: "runtime_status",
+            status: { taskId, state: "idle", replyInProgress: false },
+          };
+          safeEnqueue(encoder.encode(`data: ${JSON.stringify(reset)}\n\n`));
+        }
         cleanup();
         if (!closed) {
           try {
