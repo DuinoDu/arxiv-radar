@@ -1816,8 +1816,9 @@ export function PaperDashboard({
             </div>
 
             <div className="flex items-start gap-2 md:gap-3">
-              <div className="md:hidden">
+              <div className="flex items-start gap-2 md:hidden">
                 <AuthButton compact initialUser={authUser} loginHref={loginHref} />
+                <ManualAddButton onPaperExists={focusExistingPaper} tagConfigs={tagConfigs} />
               </div>
               <div className="hidden items-start gap-3 md:flex">
                 <AuthButton initialUser={authUser} loginHref={loginHref} />
