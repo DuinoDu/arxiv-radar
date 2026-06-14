@@ -109,6 +109,7 @@ type BindingRow = QueryResultRow & {
 
 export interface CronUser {
   userId: string;
+  phone: string | null;
   settings: AppSettings;
 }
 
@@ -850,28 +851,31 @@ export async function upsertAuthUser(
 }
 
 export async function listCronUsers(): Promise<CronUser[]> {
-  const result = await query<SettingsRow & { user_id: string }>(
+  const result = await query<SettingsRow & { user_id: string; phone: string | null }>(
     `
       SELECT
-        user_id,
-        arxiv_daily_url,
-        cron_enabled,
-        cron_local_time,
-        conductor_base_url,
-        conductor_token,
-        conductor_daemon_host,
-        conductor_workspace_path,
-        conductor_app_name,
-        conductor_backend_type,
-        tags
-      FROM user_settings
-      WHERE cron_enabled = true
-      ORDER BY user_id ASC
+        us.user_id,
+        u.phone,
+        us.arxiv_daily_url,
+        us.cron_enabled,
+        us.cron_local_time,
+        us.conductor_base_url,
+        us.conductor_token,
+        us.conductor_daemon_host,
+        us.conductor_workspace_path,
+        us.conductor_app_name,
+        us.conductor_backend_type,
+        us.tags
+      FROM user_settings us
+      LEFT JOIN users u ON u.id = us.user_id
+      WHERE us.cron_enabled = true
+      ORDER BY us.user_id ASC
     `,
   );
 
   return result.rows.map((row) => ({
     userId: row.user_id,
+    phone: row.phone ?? null,
     settings: settingsFromRow(row),
   }));
 }

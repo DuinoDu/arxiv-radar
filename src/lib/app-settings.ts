@@ -7,6 +7,7 @@ export interface PublicAppSettings {
   arxivDailyUrl: string;
   autoFetchEnabled: boolean;
   cronLocalTime: string;
+  cronAllowed: boolean;
   timeZone: string;
   conductorBaseUrl: string;
   conductorToken: string;
@@ -157,11 +158,15 @@ export function normalizeAppSettings(
   };
 }
 
-export function toPublicAppSettings(settings: AppSettings): PublicAppSettings {
+export function toPublicAppSettings(
+  settings: AppSettings,
+  options: { cronAllowed?: boolean } = {},
+): PublicAppSettings {
   return {
     arxivDailyUrl: settings.arxivDailyUrl,
     autoFetchEnabled: settings.cron.enabled,
     cronLocalTime: settings.cron.localTime,
+    cronAllowed: options.cronAllowed ?? true,
     timeZone: appTimeZone(),
     conductorBaseUrl: settings.conductor.baseUrl,
     conductorToken: "",

@@ -93,6 +93,7 @@ type SettingsForm = {
   arxivDailyUrl: string;
   autoFetchEnabled: boolean;
   cronLocalTime: string;
+  cronAllowed: boolean;
   timeZone: string;
   conductorBaseUrl: string;
   conductorToken: string;
@@ -108,6 +109,7 @@ const emptyForm: SettingsForm = {
   arxivDailyUrl: "",
   autoFetchEnabled: true,
   cronLocalTime: "02:00",
+  cronAllowed: true,
   timeZone: "Asia/Shanghai",
   conductorBaseUrl: "",
   conductorToken: "",
@@ -132,6 +134,7 @@ function knownSettings(value: unknown): value is SettingsForm {
     typeof candidate.arxivDailyUrl === "string" &&
     typeof candidate.autoFetchEnabled === "boolean" &&
     typeof candidate.cronLocalTime === "string" &&
+    typeof candidate.cronAllowed === "boolean" &&
     typeof candidate.timeZone === "string" &&
     typeof candidate.conductorBaseUrl === "string" &&
     typeof candidate.conductorToken === "string" &&
@@ -380,16 +383,21 @@ export function SettingsPopup({ requireSetup = false }: { requireSetup?: boolean
                   <section className="space-y-3">
                     <h3 className="text-sm font-semibold tracking-normal">cron</h3>
                     <div className="grid gap-3 sm:grid-cols-[1fr_10rem]">
-                      <label className="flex h-10 items-center justify-between gap-3 rounded-md border border-zinc-200 px-3 text-sm dark:border-zinc-800">
+                      <label
+                        className={`flex h-10 items-center justify-between gap-3 rounded-md border border-zinc-200 px-3 text-sm dark:border-zinc-800${
+                          form.cronAllowed ? "" : " opacity-60"
+                        }`}
+                      >
                         <span className="flex items-center gap-1 text-zinc-700 dark:text-zinc-200">
                           自动拉取
                           <HelpTip text={FIELD_HELP.autoFetch} />
                         </span>
                         <input
                           type="checkbox"
-                          checked={form.autoFetchEnabled}
+                          checked={form.cronAllowed && form.autoFetchEnabled}
+                          disabled={!form.cronAllowed}
                           onChange={(event) => updateField("autoFetchEnabled", event.target.checked)}
-                          className="h-4 w-4 accent-zinc-950 dark:accent-white"
+                          className="h-4 w-4 accent-zinc-950 disabled:cursor-not-allowed dark:accent-white"
                         />
                       </label>
                       <label className="block text-sm">
@@ -397,11 +405,17 @@ export function SettingsPopup({ requireSetup = false }: { requireSetup?: boolean
                         <input
                           type="time"
                           value={form.cronLocalTime}
+                          disabled={!form.cronAllowed}
                           onChange={(event) => updateField("cronLocalTime", event.target.value)}
-                          className="h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none transition focus:border-zinc-500 dark:border-zinc-800 dark:bg-zinc-950 dark:focus:border-zinc-500"
+                          className="h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none transition focus:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-950 dark:focus:border-zinc-500"
                         />
                       </label>
                     </div>
+                    {!form.cronAllowed && (
+                      <p className="text-xs text-amber-600 dark:text-amber-500">
+                        请联系管理员支持此功能
+                      </p>
+                    )}
                   </section>
 
                   <section className="space-y-3">

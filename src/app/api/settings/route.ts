@@ -7,6 +7,7 @@ import {
 import { readAppSettings, updateAppSettings } from "@/lib/arxiv/store";
 import { resetConductorClient } from "@/lib/conductor/client";
 import { requireAuthSession } from "@/lib/auth/guard";
+import { isCronAllowed } from "@/lib/cron-access";
 import type { AppSettings } from "@/lib/arxiv/types";
 
 export const runtime = "nodejs";
@@ -26,7 +27,8 @@ export async function GET() {
   if (!auth.ok) return auth.response;
 
   const settings = await readAppSettings(auth.session.user.id);
-  return NextResponse.json(toPublicAppSettings(settings));
+  const cronAllowed = isCronAllowed(auth.session.user.phone);
+  return NextResponse.json(toPublicAppSettings(settings, { cronAllowed }));
 }
 
 export async function PUT(request: Request) {
@@ -41,15 +43,20 @@ export async function PUT(request: Request) {
   }
 
   const current = await readAppSettings(auth.session.user.id);
+  const cronAllowed = isCronAllowed(auth.session.user.phone);
 
   try {
-    const next = settingsFromPublicInput(body, current);
+    let next = settingsFromPublicInput(body, current);
+    // Non-whitelisted users can never enable cron, regardless of the payload.
+    if (!cronAllowed && next.cron.enabled) {
+      next = { ...next, cron: { ...next.cron, enabled: false } };
+    }
     const resetPaperTasks = conductorProjectKey(current) !== conductorProjectKey(next);
 
     await updateAppSettings(auth.session.user.id, next, { resetPaperTasks });
     resetConductorClient();
 
-    return NextResponse.json(toPublicAppSettings(next));
+    return NextResponse.json(toPublicAppSettings(next, { cronAllowed }));
   } catch (error) {
     const status = error instanceof SettingsValidationError ? 400 : 500;
     return NextResponse.json(

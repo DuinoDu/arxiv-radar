@@ -4,6 +4,7 @@ import { AnalysisAlreadyRunningError, runArxivAnalysis } from "@/lib/arxiv/job";
 import { listCronUsers, readAppSettings } from "@/lib/arxiv/store";
 import type { AppSettings } from "@/lib/arxiv/types";
 import { requireAuthSession } from "@/lib/auth/guard";
+import { isCronAllowed } from "@/lib/cron-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -78,6 +79,17 @@ async function handleAutomatic(request: NextRequest) {
   const results = [];
 
   for (const user of users) {
+    // Whitelist gate: non-whitelisted users never run, even if their stored
+    // cron_enabled is still true.
+    if (!isCronAllowed(user.phone)) {
+      results.push({
+        userId: user.userId,
+        skipped: true,
+        reason: "not_whitelisted",
+      });
+      continue;
+    }
+
     const skipReason = automaticRunSkipReason(user.settings);
     if (skipReason) {
       results.push({
