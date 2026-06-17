@@ -14,7 +14,7 @@
 - 数据库是单个 SQLite 文件，部署自包含；数据迁移 = 拷文件。
 
 **发布铁律（必须遵守）**
-> **部署前一定先把本地改动 `commit` + `push` 到远程；服务器只通过 `git fetch` + `git reset --hard origin/main` 同步代码，再构建、重启。绝不直接 rsync 推代码或在服务器上手改代码。** 数据库文件不在 git 里，单独走 [§4](#4-数据库同步local--remote)。
+> **部署前一定先把本地改动 `commit` + `push` 到远程；服务器只通过 `git fetch` + `git reset --hard origin/main` 同步代码，再构建、重启。绝不绕过 git 直接传代码、也不在服务器上手改代码。** 数据库文件不在 git 里，单独走 [§4](#4-数据库同步local--remote)（用 `scp`）。
 
 ---
 
@@ -36,19 +36,19 @@ export SERVER="root@$SERVER_IP"
 ```sh
 ssh -i $SSH_KEY $SERVER '
   node -v; pnpm -v;
-  for t in gcc g++ make python3 nginx certbot rsync; do printf "%s: " $t; command -v $t || echo MISSING; done
+  for t in gcc g++ make python3 nginx certbot git; do printf "%s: " $t; command -v $t || echo MISSING; done
 '
 ```
 缺 `gcc/g++/make/python3` 会导致 `better-sqlite3` 编译失败。
 
 ### 1.3 拉取代码（git clone）+ 落地数据
-> **代码一律走 git**：服务器是仓库的 git 工作副本，靠 `git` 同步，**不用 rsync 推代码**。
+> **代码一律走 git**：服务器是仓库的 git 工作副本，靠 `git` 同步，**不绕过 git 传代码**。
 > 前置：服务器装了 `git`，且对仓库有只读访问（deploy key 或 token）。`GIT_REPO` = 仓库地址（如 `git@github.com:<org>/<repo>.git`）。
 
 ```sh
 ssh -i $SSH_KEY $SERVER 'git clone <GIT_REPO> /opt/arxiv-radar && cd /opt/arxiv-radar && git rev-parse --short HEAD'
 ```
-> **已是 rsync 部署、要转成 git 工作副本（一次性）**：
+> **目录还不是 git 工作副本时，转成 git（一次性）**：
 > ```sh
 > ssh -i $SSH_KEY $SERVER '
 >   cd /opt/arxiv-radar
@@ -59,11 +59,10 @@ ssh -i $SSH_KEY $SERVER 'git clone <GIT_REPO> /opt/arxiv-radar && cd /opt/arxiv-
 
 数据（SQLite 文件**不在 git 里**）单独传，二选一：
 ```sh
-# A) 已有就绪的库：WAL 落盘后只 rsync 这个文件
+# A) 已有就绪的库：WAL 落盘后用 scp 传这个文件
 node -e "const D=require('better-sqlite3');const db=new D('.runtime/arxiv-radar.sqlite');db.pragma('wal_checkpoint(TRUNCATE)');db.close()"
 ssh -i $SSH_KEY $SERVER 'mkdir -p /opt/arxiv-radar/.runtime'
-rsync -az -e "ssh -i $SSH_KEY -o StrictHostKeyChecking=no" \
-  .runtime/arxiv-radar.sqlite $SERVER:/opt/arxiv-radar/.runtime/arxiv-radar.sqlite
+scp -i $SSH_KEY .runtime/arxiv-radar.sqlite $SERVER:/opt/arxiv-radar/.runtime/arxiv-radar.sqlite
 # B) 全新空库：跳过，下面 1.6 用 pnpm db:migrate 建表
 ```
 
@@ -221,7 +220,7 @@ curl -s --resolve $H:443:$SERVER_IP https://$H/ | grep -oiE "<title>[^<]*</title
 
 ## 2. 日常更新（redeploy）
 
-**发布铁律：先 `commit` + `push`，服务器只 `git` 拉取，绝不 rsync 推代码。** 数据库文件另走 [§4](#4-数据库同步local--remote)。顺序固定：自检 → 提交推送 → 服务器拉取 → 构建 → 重启 → 验收。
+**发布铁律：先 `commit` + `push`，服务器只 `git` 拉取，绝不绕过 git 传代码。** 数据库文件另走 [§4](#4-数据库同步local--remote)（`scp`）。顺序固定：自检 → 提交推送 → 服务器拉取 → 构建 → 重启 → 验收。
 
 ```sh
 # 0) 本地：自检（不过不部署）
@@ -293,8 +292,7 @@ ssh -i $SSH_KEY $SERVER '
   rm -f .runtime/arxiv-radar.sqlite-wal .runtime/arxiv-radar.sqlite-shm'
 
 # 3) 覆盖
-rsync -az -e "ssh -i $SSH_KEY -o StrictHostKeyChecking=no" \
-  .runtime/arxiv-radar.sqlite $SERVER:/opt/arxiv-radar/.runtime/arxiv-radar.sqlite
+scp -i $SSH_KEY .runtime/arxiv-radar.sqlite $SERVER:/opt/arxiv-radar/.runtime/arxiv-radar.sqlite
 
 # 4) 启服务 + 核对行数
 ssh -i $SSH_KEY $SERVER '
@@ -303,7 +301,7 @@ ssh -i $SSH_KEY $SERVER '
   node -e "const D=require(\"better-sqlite3\");const db=new D(\".runtime/arxiv-radar.sqlite\",{readonly:true});console.log(\"papers:\",db.prepare(\"select count(*) c from papers\").get().c)"'
 ```
 
-> 反向（remote → local 拉生产数据）：把上面 rsync 的源/目标对调，本地先备份。
+> 反向（remote → local 拉生产数据）：把上面 scp 的源/目标对调，本地先备份。
 
 ---
 
