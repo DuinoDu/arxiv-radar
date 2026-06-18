@@ -70,6 +70,19 @@ function GithubIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+function XSocialIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="M13.74 10.63 21.22 2h-1.77l-6.5 7.5L7.77 2H1.8l7.84 11.36L1.8 22h1.78l6.85-7.47L15.9 22h5.97l-8.13-11.37Zm-2.43 2.8-.8-1.13L4.19 3.33h2.73l5.1 7.24.79 1.13 6.64 9.42h-2.73l-5.41-7.69Z" />
+    </svg>
+  );
+}
+
 const defaultTagStyles: Record<string, string> = {
   egocentric:
     "border-cyan-200 bg-cyan-50 text-cyan-800 dark:border-cyan-900 dark:bg-cyan-950/50 dark:text-cyan-200",
@@ -940,6 +953,18 @@ function PaperRow({
               onSubmit={onGithubUrlChange}
             />
           )}
+          {paper.xUrl ? (
+            <a
+              href={paper.xUrl}
+              target="_blank"
+              rel="noreferrer"
+              title="X 链接"
+              aria-label={`${paper.title} X 链接`}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-900"
+            >
+              <XSocialIcon className="h-4 w-4" />
+            </a>
+          ) : null}
           {removePending ? (
             <button
               type="button"

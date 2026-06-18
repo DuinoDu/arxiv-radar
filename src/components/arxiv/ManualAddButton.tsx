@@ -20,6 +20,7 @@ export function ManualAddButton({
   const { addFavorite } = useFavorites();
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
+  const [xUrl, setXUrl] = useState("");
   const [tags, setTags] = useState<Set<PaperTag>>(new Set());
   const [state, setState] = useState<SubmitState>("idle");
   const [message, setMessage] = useState("");
@@ -44,6 +45,7 @@ export function ManualAddButton({
 
   function resetForm() {
     setInput("");
+    setXUrl("");
     setTags(new Set());
     setState("idle");
     setMessage("");
@@ -88,6 +90,7 @@ export function ManualAddButton({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           input: trimmed,
+          xUrl: xUrl.trim() || undefined,
           tags: Array.from(tags),
         }),
       });
@@ -190,6 +193,30 @@ export function ManualAddButton({
                     }
                   }}
                   placeholder="https://arxiv.org/abs/2605.12182 或 2605.12182"
+                  className="mt-1 block w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-950 placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200 disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-600 dark:focus:border-zinc-600 dark:focus:ring-zinc-800"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="manual-add-x-url"
+                  className="block text-xs font-medium text-zinc-600 dark:text-zinc-300"
+                >
+                  X 链接（可选）
+                </label>
+                <input
+                  id="manual-add-x-url"
+                  type="url"
+                  value={xUrl}
+                  disabled={state === "submitting"}
+                  onChange={(event) => setXUrl(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      handleSubmit();
+                    }
+                  }}
+                  placeholder="https://x.com/user/status/123"
                   className="mt-1 block w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-950 placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200 disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-600 dark:focus:border-zinc-600 dark:focus:ring-zinc-800"
                 />
               </div>

@@ -59,6 +59,7 @@ type PaperRow = QueryResultRow & {
   full_text_error: string | null;
   full_text_analyzed_at: string | null;
   github_url: string | null;
+  x_url: string | null;
   summary: string;
   hypothesis: string;
   method: string;
@@ -412,6 +413,7 @@ function paperFromRow(row: PaperRow, tagRows: TagRow[] = []): AnalyzedPaper {
     fullTextError: row.full_text_error ?? undefined,
     fullTextAnalyzedAt: row.full_text_analyzed_at ?? undefined,
     githubUrl: row.github_url ?? undefined,
+    xUrl: row.x_url ?? undefined,
     model: row.model,
     confidence: row.confidence ?? undefined,
     analyzedAt: row.analyzed_at,
@@ -438,6 +440,7 @@ async function readPapersForUser(userId: string) {
         p.full_text_error,
         p.full_text_analyzed_at,
         COALESCE(up.github_url_override, p.github_url) AS github_url,
+        COALESCE(up.x_url_override, p.x_url) AS x_url,
         up.summary,
         up.hypothesis,
         up.method,
@@ -636,9 +639,10 @@ async function saveCanonicalPaper(client: Queryable, paper: ArxivArticle) {
         full_text_url,
         full_text_error,
         full_text_analyzed_at,
-        github_url
+        github_url,
+        x_url
       )
-      VALUES ($1, $2, $3::jsonb, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      VALUES ($1, $2, $3::jsonb, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       ON CONFLICT (id) DO UPDATE SET
         title = EXCLUDED.title,
         authors = EXCLUDED.authors,
@@ -653,6 +657,7 @@ async function saveCanonicalPaper(client: Queryable, paper: ArxivArticle) {
         full_text_error = COALESCE(EXCLUDED.full_text_error, papers.full_text_error),
         full_text_analyzed_at = COALESCE(EXCLUDED.full_text_analyzed_at, papers.full_text_analyzed_at),
         github_url = COALESCE(EXCLUDED.github_url, papers.github_url),
+        x_url = COALESCE(EXCLUDED.x_url, papers.x_url),
         updated_at = now()
     `,
     [
@@ -670,6 +675,7 @@ async function saveCanonicalPaper(client: Queryable, paper: ArxivArticle) {
       "fullTextError" in paper ? (paper as AnalyzedPaper).fullTextError ?? null : null,
       "fullTextAnalyzedAt" in paper ? (paper as AnalyzedPaper).fullTextAnalyzedAt ?? null : null,
       "githubUrl" in paper ? (paper as AnalyzedPaper).githubUrl ?? null : null,
+      "xUrl" in paper ? (paper as AnalyzedPaper).xUrl ?? null : null,
     ],
   );
 }

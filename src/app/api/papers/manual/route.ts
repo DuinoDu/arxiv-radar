@@ -11,7 +11,45 @@ export const dynamic = "force-dynamic";
 interface ManualPaperBody {
   input?: string;
   tags?: string[];
+  xUrl?: string;
   force?: boolean;
+}
+
+function normalizeXUrl(rawUrl: unknown): string | null {
+  if (typeof rawUrl !== "string") {
+    return null;
+  }
+
+  const trimmed = rawUrl.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  let url: URL;
+  try {
+    url = new URL(withProtocol);
+  } catch {
+    return null;
+  }
+
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    return null;
+  }
+
+  const host = url.hostname.toLowerCase();
+  const allowedHosts = new Set([
+    "x.com",
+    "www.x.com",
+    "twitter.com",
+    "www.twitter.com",
+    "mobile.twitter.com",
+  ]);
+  if (!allowedHosts.has(host) || url.pathname === "/" || !url.pathname) {
+    return null;
+  }
+
+  return url.toString();
 }
 
 function allowedTagIds(settings: AppSettings) {
@@ -92,6 +130,21 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (payload.xUrl !== undefined && typeof payload.xUrl !== "string") {
+    return NextResponse.json(
+      { ok: false, error: "xUrl 必须是字符串" },
+      { status: 400 },
+    );
+  }
+
+  const manualXUrl = normalizeXUrl(payload.xUrl);
+  if (typeof payload.xUrl === "string" && payload.xUrl.trim() && !manualXUrl) {
+    return NextResponse.json(
+      { ok: false, error: "无效的 X 链接，请使用 x.com 或 twitter.com 链接" },
+      { status: 400 },
+    );
+  }
+
   try {
     const settings = await readAppSettings(auth.session.user.id);
     const manualTags = parseTags(payload.tags, allowedTagIds(settings));
@@ -117,7 +170,10 @@ export async function POST(request: NextRequest) {
 
     const runId = `manual_${Date.now().toString(36)}`;
     const analyzed = await analyzeArticle(article, runId);
-    const finalPaper = mergeTags(analyzed, manualTags);
+    const finalPaper = {
+      ...mergeTags(analyzed, manualTags),
+      ...(manualXUrl ? { xUrl: manualXUrl } : {}),
+    };
 
     await addManualPaper(auth.session.user.id, finalPaper);
 
