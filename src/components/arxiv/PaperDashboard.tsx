@@ -610,14 +610,24 @@ function paperCardDomId(id: string) {
   return `paper-card-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
 }
 
-function GithubInputButton({
+function MissingLinkInputButton({
   paperId,
   paperTitle,
   onSubmit,
+  icon,
+  title,
+  ariaLabel,
+  placeholder,
+  inputClassName = "w-56",
 }: {
   paperId: string;
   paperTitle: string;
-  onSubmit: (id: string, githubUrl: string) => void;
+  onSubmit: (id: string, url: string) => void;
+  icon: ReactNode;
+  title: string;
+  ariaLabel: string;
+  placeholder: string;
+  inputClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
@@ -666,25 +676,25 @@ function GithubInputButton({
     <div ref={containerRef} className="relative">
       <button
         type="button"
-        title="未找到 GitHub 链接（点击手动输入）"
-        aria-label={`${paperTitle} 未找到 GitHub 链接（点击手动输入）`}
+        title={title}
+        aria-label={`${paperTitle} ${ariaLabel}`}
         onClick={() => setOpen((v) => !v)}
         className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 bg-zinc-100 text-zinc-400 transition select-none hover:bg-zinc-50 hover:text-zinc-500 active:bg-zinc-200 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-400 dark:active:bg-zinc-800"
       >
-        <GithubIcon className="h-4 w-4" />
+        {icon}
       </button>
       {open ? (
         <div className="absolute right-0 top-full z-20 mt-1 flex items-center gap-1 rounded-md border border-zinc-200 bg-white p-1.5 shadow-lg dark:border-zinc-800 dark:bg-zinc-950">
           <input
             ref={inputRef}
             type="url"
-            placeholder="github.com/owner/repo"
+            placeholder={placeholder}
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") handleSubmit();
             }}
-            className="h-7 w-56 rounded border border-zinc-200 bg-white px-2 text-xs text-zinc-800 placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:placeholder:text-zinc-600 dark:focus:border-zinc-500"
+            className={`h-7 rounded border border-zinc-200 bg-white px-2 text-xs text-zinc-800 placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:placeholder:text-zinc-600 dark:focus:border-zinc-500 ${inputClassName}`}
           />
           <button
             type="button"
@@ -697,6 +707,51 @@ function GithubInputButton({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function GithubInputButton({
+  paperId,
+  paperTitle,
+  onSubmit,
+}: {
+  paperId: string;
+  paperTitle: string;
+  onSubmit: (id: string, githubUrl: string) => void;
+}) {
+  return (
+    <MissingLinkInputButton
+      paperId={paperId}
+      paperTitle={paperTitle}
+      onSubmit={onSubmit}
+      icon={<GithubIcon className="h-4 w-4" />}
+      title="未找到 GitHub 链接（点击手动输入）"
+      ariaLabel="未找到 GitHub 链接（点击手动输入）"
+      placeholder="github.com/owner/repo"
+    />
+  );
+}
+
+function XInputButton({
+  paperId,
+  paperTitle,
+  onSubmit,
+}: {
+  paperId: string;
+  paperTitle: string;
+  onSubmit: (id: string, xUrl: string) => void;
+}) {
+  return (
+    <MissingLinkInputButton
+      paperId={paperId}
+      paperTitle={paperTitle}
+      onSubmit={onSubmit}
+      icon={<XSocialIcon className="h-4 w-4" />}
+      title="未找到 X / xhs 链接（点击手动输入）"
+      ariaLabel="未找到 X / xhs 链接（点击手动输入）"
+      placeholder="x.com/user/status/123 或 xiaohongshu.com/explore/..."
+      inputClassName="w-72 max-w-[70vw]"
+    />
   );
 }
 
@@ -725,6 +780,7 @@ function PaperRow({
   onRemoveClick,
   onRemoveCancel,
   onGithubUrlChange,
+  onXUrlChange,
 }: {
   paper: AnalyzedPaper;
   timeZone: string;
@@ -750,6 +806,7 @@ function PaperRow({
   onRemoveClick: (id: string) => void;
   onRemoveCancel: () => void;
   onGithubUrlChange: (id: string, githubUrl: string) => void;
+  onXUrlChange: (id: string, xUrl: string) => void;
 }) {
   const detailItems = [
     ["假设", paper.hypothesis],
@@ -958,13 +1015,19 @@ function PaperRow({
               href={paper.xUrl}
               target="_blank"
               rel="noreferrer"
-              title="X 链接"
-              aria-label={`${paper.title} X 链接`}
+              title="X / xhs 链接"
+              aria-label={`${paper.title} X / xhs 链接`}
               className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-900"
             >
               <XSocialIcon className="h-4 w-4" />
             </a>
-          ) : null}
+          ) : (
+            <XInputButton
+              paperId={paper.id}
+              paperTitle={paper.title}
+              onSubmit={onXUrlChange}
+            />
+          )}
           {removePending ? (
             <button
               type="button"
@@ -1336,6 +1399,48 @@ export function PaperDashboard({
         setPapers((prev) =>
           prev.map((paper) =>
             paper.id === paperId ? { ...paper, githubUrl: undefined } : paper,
+          ),
+        );
+      });
+  }, []);
+
+  const handleXUrlChange = useCallback((paperId: string, xUrl: string) => {
+    let previousXUrl: string | undefined;
+    setPapers((prev) =>
+      prev.map((paper) => {
+        if (paper.id !== paperId) return paper;
+        previousXUrl = paper.xUrl;
+        return { ...paper, xUrl };
+      }),
+    );
+
+    void fetch(`/api/papers/${encodeURIComponent(paperId)}/x`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ xUrl }),
+    })
+      .then(async (response) => {
+        const payload = (await response.json().catch(() => ({ ok: false }))) as {
+          ok?: boolean;
+          xUrl?: string;
+          error?: string;
+        };
+        if (!response.ok || !payload?.ok) {
+          throw new Error(payload?.error || "更新 X / xhs 链接失败");
+        }
+        if (payload.xUrl) {
+          setPapers((prev) =>
+            prev.map((paper) =>
+              paper.id === paperId ? { ...paper, xUrl: payload.xUrl } : paper,
+            ),
+          );
+        }
+      })
+      .catch((error) => {
+        console.error("update paper X/xhs url failed", error);
+        setPapers((prev) =>
+          prev.map((paper) =>
+            paper.id === paperId ? { ...paper, xUrl: previousXUrl } : paper,
           ),
         );
       });
@@ -1984,6 +2089,7 @@ export function PaperDashboard({
                 onRemoveClick={handleRemoveClick}
                 onRemoveCancel={handleRemoveCancel}
                 onGithubUrlChange={handleGithubUrlChange}
+                onXUrlChange={handleXUrlChange}
               />
             ))
           ) : loadingMore ? (

@@ -202,7 +202,7 @@ export function ManualAddButton({
                   htmlFor="manual-add-x-url"
                   className="block text-xs font-medium text-zinc-600 dark:text-zinc-300"
                 >
-                  X 链接（可选）
+                  X / xhs 链接（可选）
                 </label>
                 <input
                   id="manual-add-x-url"
@@ -216,7 +216,7 @@ export function ManualAddButton({
                       handleSubmit();
                     }
                   }}
-                  placeholder="https://x.com/user/status/123"
+                  placeholder="https://x.com/user/status/123 或 https://www.xiaohongshu.com/explore/..."
                   className="mt-1 block w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-950 placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200 disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-600 dark:focus:border-zinc-600 dark:focus:ring-zinc-800"
                 />
               </div>

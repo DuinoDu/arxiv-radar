@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { analyzeArticle } from "@/lib/arxiv/analyzer";
 import { fetchArticleMetadata, normalizeArxivId } from "@/lib/arxiv/fetcher";
+import { normalizeXOrXhsUrl } from "@/lib/arxiv/social-links";
 import { addManualPaper, readAppSettings, readArxivState } from "@/lib/arxiv/store";
 import { PAPER_TAGS, type AnalyzedPaper, type AppSettings, type PaperTag } from "@/lib/arxiv/types";
 import { requireAuthSession } from "@/lib/auth/guard";
@@ -13,43 +14,6 @@ interface ManualPaperBody {
   tags?: string[];
   xUrl?: string;
   force?: boolean;
-}
-
-function normalizeXUrl(rawUrl: unknown): string | null {
-  if (typeof rawUrl !== "string") {
-    return null;
-  }
-
-  const trimmed = rawUrl.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-  let url: URL;
-  try {
-    url = new URL(withProtocol);
-  } catch {
-    return null;
-  }
-
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
-    return null;
-  }
-
-  const host = url.hostname.toLowerCase();
-  const allowedHosts = new Set([
-    "x.com",
-    "www.x.com",
-    "twitter.com",
-    "www.twitter.com",
-    "mobile.twitter.com",
-  ]);
-  if (!allowedHosts.has(host) || url.pathname === "/" || !url.pathname) {
-    return null;
-  }
-
-  return url.toString();
 }
 
 function allowedTagIds(settings: AppSettings) {
@@ -137,10 +101,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const manualXUrl = normalizeXUrl(payload.xUrl);
+  const manualXUrl = normalizeXOrXhsUrl(payload.xUrl);
   if (typeof payload.xUrl === "string" && payload.xUrl.trim() && !manualXUrl) {
     return NextResponse.json(
-      { ok: false, error: "无效的 X 链接，请使用 x.com 或 twitter.com 链接" },
+      { ok: false, error: "无效的 X / xhs 链接，请使用 x.com、twitter.com 或 xiaohongshu.com 链接" },
       { status: 400 },
     );
   }

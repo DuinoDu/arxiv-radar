@@ -1135,6 +1135,19 @@ export async function updatePaperGithubUrl(userId: string, paperId: string, gith
   return (result.rowCount ?? 0) > 0;
 }
 
+export async function updatePaperXUrl(userId: string, paperId: string, xUrl: string): Promise<boolean> {
+  const id = normalizedUserId(userId);
+  const result = await query(
+    `
+      UPDATE user_papers
+      SET x_url_override = $1, updated_at = now()
+      WHERE user_id = $2 AND paper_id = $3
+    `,
+    [xUrl, id, paperId],
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
 export async function addManualPaper(userId: string, paper: AnalyzedPaper) {
   const id = normalizedUserId(userId);
   await transaction(async (client) => {
