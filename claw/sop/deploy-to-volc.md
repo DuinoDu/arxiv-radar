@@ -16,6 +16,8 @@
 **发布铁律（必须遵守）**
 > **部署前一定先把本地改动 `commit` + `push` 到远程；服务器只通过 `git fetch` + `git reset --hard origin/main` 同步代码，再构建、重启。绝不绕过 git 直接传代码、也不在服务器上手改代码。** 数据库文件不在 git 里，单独走 [§4](#4-数据库同步local--remote)（用 `scp`）。
 
+根据"make info-volc"获取volc相关信息.
+
 ---
 
 ## 1. 首次部署（全新机器）
