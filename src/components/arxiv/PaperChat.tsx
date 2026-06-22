@@ -13,6 +13,7 @@ import {
 } from "@love-moon/app-sdk/react";
 import { isConductorAppError } from "@love-moon/app-sdk";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { paperHtmlUrl } from "@/lib/arxiv/paper-source";
 import type { AnalyzedPaper } from "@/lib/arxiv/types";
 import {
   TaskStatusBadge,
@@ -95,6 +96,7 @@ export function PaperChat({ paper, authenticated }: { paper: AnalyzedPaper; auth
   const [killingStartedAt, setKillingStartedAt] = useState<string | null>(null);
   const [killing, setKilling] = useState(false);
   const [restarting, setRestarting] = useState(false);
+  const hasHtmlView = Boolean(paperHtmlUrl(paper));
 
   useEffect(() => {
     if (!authenticated) {
@@ -274,13 +276,6 @@ export function PaperChat({ paper, authenticated }: { paper: AnalyzedPaper; auth
     setBindAttempt((n) => n + 1);
   }
 
-  const isStopped =
-    taskStatus === "killed" ||
-    taskStatus === "completed" ||
-    taskStatus === "failed" ||
-    taskStatus === "cancelled" ||
-    taskStatus === "unknown";
-
   return (
     <section className="flex h-[100dvh] flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950 lg:h-full lg:min-h-0">
       <div className="flex h-11 items-center justify-between gap-2 border-b border-zinc-200 px-2 dark:border-zinc-800 lg:px-3">
@@ -340,16 +335,18 @@ export function PaperChat({ paper, authenticated }: { paper: AnalyzedPaper; auth
             >
               <FileText className="h-4 w-4" aria-hidden="true" />
             </Link>
-            <Link
-              href={chatPath(paper, "html")}
-              scroll={false}
-              aria-pressed={false}
-              aria-label="HTML"
-              title="HTML"
-              className="inline-flex w-9 items-center justify-center border-l border-zinc-200 text-zinc-600 transition hover:bg-white dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800"
-            >
-              <Globe2 className="h-4 w-4" aria-hidden="true" />
-            </Link>
+            {hasHtmlView ? (
+              <Link
+                href={chatPath(paper, "html")}
+                scroll={false}
+                aria-pressed={false}
+                aria-label="HTML"
+                title="HTML"
+                className="inline-flex w-9 items-center justify-center border-l border-zinc-200 text-zinc-600 transition hover:bg-white dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              >
+                <Globe2 className="h-4 w-4" aria-hidden="true" />
+              </Link>
+            ) : null}
             <Link
               href={chatPath(paper, "chat")}
               scroll={false}

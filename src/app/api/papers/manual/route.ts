@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { analyzeArticle } from "@/lib/arxiv/analyzer";
+import { ExternalPdfError, fetchExternalPdfArticle } from "@/lib/arxiv/external-pdf";
 import { fetchArticleMetadata, normalizeArxivId } from "@/lib/arxiv/fetcher";
 import { normalizeXOrXhsUrl } from "@/lib/arxiv/social-links";
 import { addManualPaper, readAppSettings, readArxivState } from "@/lib/arxiv/store";
-import { PAPER_TAGS, type AnalyzedPaper, type AppSettings, type PaperTag } from "@/lib/arxiv/types";
+import { PAPER_TAGS, type AnalyzedPaper, type AppSettings, type ArxivArticle, type PaperTag } from "@/lib/arxiv/types";
 import { requireAuthSession } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
@@ -66,6 +67,30 @@ function mergeTags(analyzed: AnalyzedPaper, manualTags: PaperTag[]): AnalyzedPap
   };
 }
 
+function externalPdfPaper(article: ArxivArticle, runId: string): AnalyzedPaper {
+  const now = new Date().toISOString();
+  return {
+    ...article,
+    summary: "非 arXiv PDF，已添加 PDF 原文链接，可在 chat 中基于 PDF 讨论。",
+    hypothesis: "未分析（非 arXiv PDF）",
+    method: "未分析（非 arXiv PDF）",
+    problem: "未分析（非 arXiv PDF）",
+    conclusion: "未分析（非 arXiv PDF）",
+    tags: [],
+    tagEvidence: {},
+    tagConfidence: {},
+    tagSource: {},
+    fullTextStatus: "unavailable",
+    fullTextUrl: article.pdfUrl,
+    fullTextError: "直接 PDF 已验证；应用添加时不抽取 PDF 正文。",
+    fullTextAnalyzedAt: now,
+    sourceType: "external_pdf",
+    model: "manual-external-pdf",
+    analyzedAt: now,
+    runId,
+  };
+}
+
 export async function POST(request: NextRequest) {
   const auth = await requireAuthSession();
   if (!auth.ok) return auth.response;
@@ -81,15 +106,7 @@ export async function POST(request: NextRequest) {
   const rawInput = typeof payload.input === "string" ? payload.input.trim() : "";
   if (!rawInput) {
     return NextResponse.json(
-      { ok: false, error: "请提供 arxiv 链接或论文 ID" },
-      { status: 400 },
-    );
-  }
-
-  const arxivId = normalizeArxivId(rawInput);
-  if (!arxivId || !/^([a-z\-]+(?:\.[A-Z]{2})?\/\d{7}|\d{4}\.\d{4,6})$/i.test(arxivId)) {
-    return NextResponse.json(
-      { ok: false, error: `无法解析 arxiv ID，请检查输入：${rawInput}` },
+      { ok: false, error: "请提供 arxiv 链接、论文 ID 或可直接访问的 PDF 链接" },
       { status: 400 },
     );
   }
@@ -112,32 +129,64 @@ export async function POST(request: NextRequest) {
   try {
     const settings = await readAppSettings(auth.session.user.id);
     const manualTags = parseTags(payload.tags, allowedTagIds(settings));
+    const runId = `manual_${Date.now().toString(36)}`;
+    const arxivId = normalizeArxivId(rawInput);
+    const isArxivInput = Boolean(
+      arxivId && /^([a-z\-]+(?:\.[A-Z]{2})?\/\d{7}|\d{4}\.\d{4,6})$/i.test(arxivId),
+    );
+    let finalPaper: AnalyzedPaper;
 
-    if (!payload.force) {
-      const state = await readArxivState(auth.session.user.id);
-      if (state.papers.some((paper) => paper.id === arxivId)) {
+    if (isArxivInput) {
+      if (!payload.force) {
+        const state = await readArxivState(auth.session.user.id);
+        if (state.papers.some((paper) => paper.id === arxivId)) {
+          return NextResponse.json(
+            { ok: false, error: `论文已存在：${arxivId}`, paperId: arxivId },
+            { status: 409 },
+          );
+        }
+      }
+
+      const articles = await fetchArticleMetadata([arxivId]);
+      const article = articles[0];
+      if (!article) {
         return NextResponse.json(
-          { ok: false, error: `论文已存在：${arxivId}`, paperId: arxivId },
-          { status: 409 },
+          { ok: false, error: `从 arxiv 获取元数据失败：${arxivId}` },
+          { status: 404 },
         );
       }
-    }
 
-    const articles = await fetchArticleMetadata([arxivId]);
-    const article = articles[0];
-    if (!article) {
-      return NextResponse.json(
-        { ok: false, error: `从 arxiv 获取元数据失败：${arxivId}` },
-        { status: 404 },
-      );
-    }
+      finalPaper = {
+        ...mergeTags(await analyzeArticle(article, runId), manualTags),
+        ...(manualXUrl ? { xUrl: manualXUrl } : {}),
+      };
+    } else {
+      let article: ArxivArticle;
+      try {
+        article = await fetchExternalPdfArticle(rawInput);
+      } catch (error) {
+        const message =
+          error instanceof ExternalPdfError
+            ? error.message
+            : `无法解析 arxiv ID 或直接 PDF 链接，请检查输入：${rawInput}`;
+        return NextResponse.json({ ok: false, error: message }, { status: 400 });
+      }
 
-    const runId = `manual_${Date.now().toString(36)}`;
-    const analyzed = await analyzeArticle(article, runId);
-    const finalPaper = {
-      ...mergeTags(analyzed, manualTags),
-      ...(manualXUrl ? { xUrl: manualXUrl } : {}),
-    };
+      if (!payload.force) {
+        const state = await readArxivState(auth.session.user.id);
+        if (state.papers.some((paper) => paper.id === article.id)) {
+          return NextResponse.json(
+            { ok: false, error: `论文已存在：${article.title}`, paperId: article.id },
+            { status: 409 },
+          );
+        }
+      }
+
+      finalPaper = {
+        ...mergeTags(externalPdfPaper(article, runId), manualTags),
+        ...(manualXUrl ? { xUrl: manualXUrl } : {}),
+      };
+    }
 
     await addManualPaper(auth.session.user.id, finalPaper);
 

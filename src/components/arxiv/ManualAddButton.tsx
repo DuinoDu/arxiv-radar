@@ -131,8 +131,8 @@ export function ManualAddButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        title="手工增加论文"
-        aria-label="手工增加论文"
+        title="手动增加论文"
+        aria-label="手动增加论文"
         className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
       >
         <Plus className="h-4 w-4" aria-hidden="true" />
@@ -154,10 +154,10 @@ export function ManualAddButton({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 id="manual-add-title" className="text-base font-semibold text-zinc-950 dark:text-white">
-                  手工增加论文
+                  手动增加论文
                 </h2>
                 <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                  支持 arxiv 链接（html / pdf / abs）或论文 ID（如 2605.12182），创建后自动加入收藏
+                  支持 arxiv 链接/ID，或可直接访问的 PDF 链接，创建后自动加入收藏
                 </p>
               </div>
               <button
@@ -177,7 +177,7 @@ export function ManualAddButton({
                   htmlFor="manual-add-input"
                   className="block text-xs font-medium text-zinc-600 dark:text-zinc-300"
                 >
-                  arxiv 地址 / ID
+                  arxiv 地址 / ID / PDF 链接
                 </label>
                 <input
                   ref={inputRef}
@@ -192,7 +192,7 @@ export function ManualAddButton({
                       handleSubmit();
                     }
                   }}
-                  placeholder="https://arxiv.org/abs/2605.12182 或 2605.12182"
+                  placeholder="https://arxiv.org/abs/2605.12182、2605.12182 或 https://example.com/paper.pdf"
                   className="mt-1 block w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-950 placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200 disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-600 dark:focus:border-zinc-600 dark:focus:ring-zinc-800"
                 />
               </div>

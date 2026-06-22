@@ -7,8 +7,8 @@
  * Idempotent. On first call for a given paper:
  *   1. ensures the Conductor project exists for this app (project bind),
  *   2. creates a Conductor task scoped to the paper, seeded with a short
- *      initial message pointing at the arXiv HTML so the AI's harness can
- *      fetch the paper text on demand,
+ *      initial message pointing at the paper source (arXiv HTML or direct
+ *      external PDF) so the AI's harness can fetch the paper text on demand,
  *   3. persists the resulting `{ userId → paperId → taskId }` mapping into
  *      the user-scoped database tables.
  *
@@ -42,6 +42,7 @@ import {
   setUserPaperTaskBinding,
 } from "@/lib/arxiv/store";
 import { getCurrentAuthSession, type AuthSession } from "@/lib/auth/session";
+import { arxivHtmlUrl, isExternalPdfPaper } from "@/lib/arxiv/paper-source";
 import type { AnalyzedPaper } from "@/lib/arxiv/types";
 
 export const runtime = "nodejs";
@@ -181,15 +182,21 @@ async function bindWithDedup(
  */
 function buildInitialMessage(paper: AnalyzedPaper): string {
   const lines: string[] = [];
-  lines.push(`我想和你讨论这篇 arXiv 论文：《${paper.title}》。`);
-  lines.push(`HTML 全文：https://arxiv.org/html/${paper.id}`);
-  if (paper.pdfUrl) lines.push(`PDF：${paper.pdfUrl}`);
-  if (paper.arxivUrl) lines.push(`arXiv 摘要页：${paper.arxivUrl}`);
+  if (isExternalPdfPaper(paper)) {
+    lines.push(`我想和你讨论这篇非 arXiv PDF 论文：《${paper.title}》。`);
+    if (paper.pdfUrl) lines.push(`PDF 原文：${paper.pdfUrl}`);
+    lines.push("这篇论文没有 arXiv HTML 页面；需要时请直接读取 PDF 原文链接。");
+  } else {
+    lines.push(`我想和你讨论这篇 arXiv 论文：《${paper.title}》。`);
+    lines.push(`HTML 全文：${arxivHtmlUrl(paper)}`);
+    if (paper.pdfUrl) lines.push(`PDF：${paper.pdfUrl}`);
+    if (paper.arxivUrl) lines.push(`arXiv 摘要页：${paper.arxivUrl}`);
+  }
   if (paper.authors?.length) {
     lines.push(`作者：${paper.authors.join(", ")}`);
   }
   lines.push("");
-  lines.push("需要时请基于 HTML 全文回答，不确定就说不知道，不要编实验数值或结论。");
+  lines.push("需要时请基于可访问的论文原文回答，不确定就说不知道，不要编实验数值或结论。");
   return lines.join("\n");
 }
 

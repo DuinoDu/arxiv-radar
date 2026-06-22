@@ -1,4 +1,5 @@
 import * as cheerio from "cheerio";
+import { arxivHtmlUrl, isExternalPdfPaper } from "./paper-source";
 import type { ArxivArticle, FullTextStatus } from "./types";
 
 const USER_AGENT = "arxiv-radar/0.1";
@@ -34,10 +35,6 @@ function getFullTextTimeoutMs() {
   return Number.isFinite(configuredTimeout)
     ? Math.max(1000, Math.floor(configuredTimeout))
     : DEFAULT_FULL_TEXT_TIMEOUT_MS;
-}
-
-export function arxivHtmlUrl(paper: Pick<ArxivArticle, "id">) {
-  return `https://arxiv.org/html/${paper.id}`;
 }
 
 export function compactText(value: string, maxLength: number) {
@@ -303,7 +300,17 @@ export function extractPaperHtmlText(html: string) {
   return normalizePaperText(root.text());
 }
 
-export async function fetchPaperFullText(paper: Pick<ArxivArticle, "id">): Promise<PaperFullText> {
+export async function fetchPaperFullText(
+  paper: Pick<ArxivArticle, "id" | "arxivUrl" | "pdfUrl">,
+): Promise<PaperFullText> {
+  if (isExternalPdfPaper(paper)) {
+    return {
+      status: "unavailable",
+      url: paper.pdfUrl ?? paper.arxivUrl,
+      error: "Direct PDF source; HTML full text is unavailable.",
+    };
+  }
+
   const url = arxivHtmlUrl(paper);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), getFullTextTimeoutMs());

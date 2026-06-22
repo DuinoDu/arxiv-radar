@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 // SDK styles first so our overrides in globals.css win at equal CSS
 // specificity (e.g. for `.conductor-chat-view { display: flex }` over the
 // SDK's `display: grid`).
@@ -7,16 +6,6 @@ import "@love-moon/app-sdk/react/styles.css";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { RegisterSW } from "@/components/pwa/RegisterSW";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 const APP_NAME = "arxiv-radar";
 const APP_DESCRIPTION =
@@ -56,9 +45,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN" suppressHydrationWarning>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+      <body className="antialiased">
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

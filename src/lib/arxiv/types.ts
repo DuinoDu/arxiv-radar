@@ -12,6 +12,7 @@ export type PaperTagSource = "title" | "abstract" | "full_text";
 export type FullTextStatus = "available" | "unavailable" | "failed";
 
 export type RunStatus = "running" | "completed" | "failed";
+export type PaperSourceType = "arxiv" | "external_pdf";
 
 export interface ArxivArticle {
   id: string;
@@ -41,6 +42,7 @@ export interface AnalyzedPaper extends ArxivArticle {
   fullTextAnalyzedAt?: string;
   githubUrl?: string;
   xUrl?: string;
+  sourceType?: PaperSourceType;
   model: string;
   confidence?: number;
   analyzedAt: string;

@@ -1,6 +1,6 @@
 "use client";
 
-import { KeyboardEvent, PointerEvent, useEffect, useRef, useState } from "react";
+import { KeyboardEvent, PointerEvent, useCallback, useEffect, useRef, useState } from "react";
 import { GripVertical } from "lucide-react";
 import { PaperChat } from "@/components/arxiv/PaperChat";
 import { PaperReader } from "@/components/arxiv/PaperReader";
@@ -26,9 +26,13 @@ export function PaperWorkspace({
   paper: AnalyzedPaper;
   authenticated: boolean;
 }) {
+  const [linkOverrides, setLinkOverrides] = useState<
+    Record<string, Pick<AnalyzedPaper, "githubUrl" | "xUrl">>
+  >({});
   const [readerPercent, setReaderPercent] = useState(DEFAULT_READER_PERCENT);
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const currentPaper = { ...paper, ...(linkOverrides[paper.id] ?? {}) };
 
   // On desktop the reader always renders; if the URL view is "chat", default the reader to PDF.
   const readerMode: ReaderMode = view === "html" ? "html" : "pdf";
@@ -93,6 +97,80 @@ export function PaperWorkspace({
     }
   }
 
+  const handleGithubUrlChange = useCallback((paperId: string, githubUrl: string) => {
+    const previousGithubUrl = currentPaper.githubUrl;
+    setLinkOverrides((existing) => ({
+      ...existing,
+      [paperId]: { ...existing[paperId], githubUrl },
+    }));
+
+    void fetch(`/api/papers/${encodeURIComponent(paperId)}/github`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ githubUrl }),
+    })
+      .then(async (response) => {
+        const payload = (await response.json().catch(() => ({ ok: false }))) as {
+          ok?: boolean;
+          githubUrl?: string;
+          error?: string;
+        };
+        if (!response.ok || !payload?.ok) {
+          throw new Error(payload?.error || "更新 GitHub 链接失败");
+        }
+        if (payload.githubUrl) {
+          setLinkOverrides((existing) => ({
+            ...existing,
+            [paperId]: { ...existing[paperId], githubUrl: payload.githubUrl },
+          }));
+        }
+      })
+      .catch((error) => {
+        console.error("update paper github url failed", error);
+        setLinkOverrides((existing) => ({
+          ...existing,
+          [paperId]: { ...existing[paperId], githubUrl: previousGithubUrl },
+        }));
+      });
+  }, [currentPaper.githubUrl]);
+
+  const handleXUrlChange = useCallback((paperId: string, xUrl: string) => {
+    const previousXUrl = currentPaper.xUrl;
+    setLinkOverrides((existing) => ({
+      ...existing,
+      [paperId]: { ...existing[paperId], xUrl },
+    }));
+
+    void fetch(`/api/papers/${encodeURIComponent(paperId)}/x`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ xUrl }),
+    })
+      .then(async (response) => {
+        const payload = (await response.json().catch(() => ({ ok: false }))) as {
+          ok?: boolean;
+          xUrl?: string;
+          error?: string;
+        };
+        if (!response.ok || !payload?.ok) {
+          throw new Error(payload?.error || "更新 X / xhs 链接失败");
+        }
+        if (payload.xUrl) {
+          setLinkOverrides((existing) => ({
+            ...existing,
+            [paperId]: { ...existing[paperId], xUrl: payload.xUrl },
+          }));
+        }
+      })
+      .catch((error) => {
+        console.error("update paper X/xhs url failed", error);
+        setLinkOverrides((existing) => ({
+          ...existing,
+          [paperId]: { ...existing[paperId], xUrl: previousXUrl },
+        }));
+      });
+  }, [currentPaper.xUrl]);
+
   return (
     <div
       ref={containerRef}
@@ -108,7 +186,12 @@ export function PaperWorkspace({
           flexShrink: 0,
         }}
       >
-        <PaperReader mode={readerMode} paper={paper} />
+        <PaperReader
+          mode={readerMode}
+          paper={currentPaper}
+          onGithubUrlChange={handleGithubUrlChange}
+          onXUrlChange={handleXUrlChange}
+        />
       </div>
 
       <button
@@ -142,7 +225,7 @@ export function PaperWorkspace({
       {isDragging ? <div className="fixed inset-0 z-50 cursor-col-resize lg:block" aria-hidden="true" /> : null}
 
       <div className={`min-w-0 lg:h-full lg:flex-1 ${isChatView ? "" : "hidden lg:block"}`}>
-        <PaperChat paper={paper} authenticated={authenticated} />
+        <PaperChat paper={currentPaper} authenticated={authenticated} />
       </div>
     </div>
   );

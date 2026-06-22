@@ -2,6 +2,7 @@ import type { PoolClient, QueryResult, QueryResultRow } from "pg";
 import { createEnvAppSettings, normalizeAppSettings } from "@/lib/app-settings";
 import type { AuthUser } from "@/lib/auth/session";
 import { query, transaction } from "@/lib/db";
+import { isExternalPdfPaper } from "./paper-source";
 import {
   type AnalysisRun,
   type AnalysisRunLogEntry,
@@ -389,6 +390,14 @@ function paperFromRow(row: PaperRow, tagRows: TagRow[] = []): AnalyzedPaper {
     tagSource[tag] = paperTagSource(tagRow.source);
   }
 
+  const sourceType = isExternalPdfPaper({
+    id: row.id,
+    arxivUrl: row.arxiv_url,
+    pdfUrl: row.pdf_url ?? undefined,
+  })
+    ? "external_pdf"
+    : "arxiv";
+
   return {
     id: row.id,
     title: row.title,
@@ -414,6 +423,7 @@ function paperFromRow(row: PaperRow, tagRows: TagRow[] = []): AnalyzedPaper {
     fullTextAnalyzedAt: row.full_text_analyzed_at ?? undefined,
     githubUrl: row.github_url ?? undefined,
     xUrl: row.x_url ?? undefined,
+    sourceType,
     model: row.model,
     confidence: row.confidence ?? undefined,
     analyzedAt: row.analyzed_at,

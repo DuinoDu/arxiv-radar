@@ -1,34 +1,38 @@
 import Link from "next/link";
 import { ArrowLeft, ExternalLink, FileText, Globe2, MessageSquare } from "lucide-react";
+import { PaperGithubButton, PaperXButton } from "@/components/arxiv/PaperLinkButtons";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { paperHtmlUrl, paperPdfUrl } from "@/lib/arxiv/paper-source";
 import type { AnalyzedPaper } from "@/lib/arxiv/types";
 
 type ReaderMode = "pdf" | "html";
 type WorkspaceView = "pdf" | "html" | "chat";
 
-function arxivHtmlUrl(paper: AnalyzedPaper) {
-  return `https://arxiv.org/html/${paper.id}`;
-}
-
-function arxivPdfUrl(paper: AnalyzedPaper) {
-  return (paper.pdfUrl || `https://arxiv.org/pdf/${paper.id}`).replace(/^http:/, "https:");
-}
-
 function chatPath(paper: AnalyzedPaper, view: WorkspaceView) {
   return `/papers/${encodeURIComponent(paper.id)}/chat?view=${view}`;
 }
 
-export function PaperReader({ mode, paper }: { mode: ReaderMode; paper: AnalyzedPaper }) {
+export function PaperReader({
+  mode,
+  paper,
+  onGithubUrlChange,
+  onXUrlChange,
+}: {
+  mode: ReaderMode;
+  paper: AnalyzedPaper;
+  onGithubUrlChange: (id: string, githubUrl: string) => void;
+  onXUrlChange: (id: string, xUrl: string) => void;
+}) {
   const urls = {
-    pdf: arxivPdfUrl(paper),
-    html: arxivHtmlUrl(paper),
+    pdf: paperPdfUrl(paper),
+    html: paperHtmlUrl(paper),
   };
-  const currentUrl = urls[mode];
+  const currentUrl = mode === "html" && urls.html ? urls.html : urls.pdf;
 
   return (
     <section className="flex h-[100dvh] flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950 lg:h-full lg:min-h-0">
-      <div className="flex h-11 items-center justify-between gap-2 border-b border-zinc-200 px-2 dark:border-zinc-800">
-        <div className="flex shrink-0 items-center gap-2">
+      <div className="relative z-20 flex h-11 items-center justify-between gap-2 border-b border-zinc-200 px-2 dark:border-zinc-800">
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
           {/* Intentional hard navigation: ensure clicking back lands on a
               fresh `/` instead of restoring the previous router/scroll state. */}
           {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
@@ -43,7 +47,7 @@ export function PaperReader({ mode, paper }: { mode: ReaderMode; paper: Analyzed
           <ThemeToggle className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900" />
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
           {/* Tab group: icon-only on mobile (text label hidden), icon + text
               on desktop. Padding tightens on mobile to keep the group from
               fighting other top-bar items for space. */}
@@ -54,7 +58,7 @@ export function PaperReader({ mode, paper }: { mode: ReaderMode; paper: Analyzed
               aria-pressed={mode === "pdf"}
               aria-label="PDF"
               title="PDF"
-              className={`inline-flex w-9 items-center justify-center text-xs font-medium transition lg:w-auto lg:gap-1.5 lg:px-2.5 ${
+              className={`inline-flex w-8 items-center justify-center text-xs font-medium transition lg:w-auto lg:gap-1.5 lg:px-2.5 ${
                 mode === "pdf"
                   ? "bg-zinc-950 text-white dark:bg-white dark:text-zinc-950"
                   : "text-zinc-600 hover:bg-white dark:text-zinc-300 dark:hover:bg-zinc-800"
@@ -63,32 +67,49 @@ export function PaperReader({ mode, paper }: { mode: ReaderMode; paper: Analyzed
               <FileText className="h-4 w-4" aria-hidden="true" />
               <span className="hidden lg:inline">PDF</span>
             </Link>
-            <Link
-              href={chatPath(paper, "html")}
-              scroll={false}
-              aria-pressed={mode === "html"}
-              aria-label="HTML"
-              title="HTML"
-              className={`inline-flex w-9 items-center justify-center border-l border-zinc-200 text-xs font-medium transition dark:border-zinc-800 lg:w-auto lg:gap-1.5 lg:px-2.5 ${
-                mode === "html"
-                  ? "bg-zinc-950 text-white dark:bg-white dark:text-zinc-950"
-                  : "text-zinc-600 hover:bg-white dark:text-zinc-300 dark:hover:bg-zinc-800"
-              }`}
-            >
-              <Globe2 className="h-4 w-4" aria-hidden="true" />
-              <span className="hidden lg:inline">HTML</span>
-            </Link>
+            {urls.html ? (
+              <Link
+                href={chatPath(paper, "html")}
+                scroll={false}
+                aria-pressed={mode === "html"}
+                aria-label="HTML"
+                title="HTML"
+                className={`inline-flex w-8 items-center justify-center border-l border-zinc-200 text-xs font-medium transition dark:border-zinc-800 lg:w-auto lg:gap-1.5 lg:px-2.5 ${
+                  mode === "html"
+                    ? "bg-zinc-950 text-white dark:bg-white dark:text-zinc-950"
+                    : "text-zinc-600 hover:bg-white dark:text-zinc-300 dark:hover:bg-zinc-800"
+                }`}
+              >
+                <Globe2 className="h-4 w-4" aria-hidden="true" />
+                <span className="hidden lg:inline">HTML</span>
+              </Link>
+            ) : null}
             <Link
               href={chatPath(paper, "chat")}
               scroll={false}
               aria-pressed={false}
               aria-label="Chat"
               title="Chat"
-              className="inline-flex w-9 items-center justify-center border-l border-zinc-200 text-zinc-600 transition hover:bg-white dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800 lg:hidden"
+              className="inline-flex w-8 items-center justify-center border-l border-zinc-200 text-zinc-600 transition hover:bg-white dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800 lg:hidden"
             >
               <MessageSquare className="h-4 w-4" aria-hidden="true" />
             </Link>
           </div>
+
+          <PaperGithubButton
+            paperId={paper.id}
+            paperTitle={paper.title}
+            githubUrl={paper.githubUrl}
+            onSubmit={onGithubUrlChange}
+            buttonClassName="h-8 w-8"
+          />
+          <PaperXButton
+            paperId={paper.id}
+            paperTitle={paper.title}
+            xUrl={paper.xUrl}
+            onSubmit={onXUrlChange}
+            buttonClassName="h-8 w-8"
+          />
 
           <Link
             href={currentUrl}
