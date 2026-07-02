@@ -35,6 +35,7 @@ import {
   bindArxivRadarProject,
   getConductorClient,
 } from "@/lib/conductor/client";
+import { buildPaperInitialChatMessage } from "@/lib/arxiv/chat";
 import {
   getUserPaperTaskBinding,
   readAppSettings,
@@ -42,7 +43,7 @@ import {
   setUserPaperTaskBinding,
 } from "@/lib/arxiv/store";
 import { getCurrentAuthSession, type AuthSession } from "@/lib/auth/session";
-import { arxivHtmlUrl, isExternalPdfPaper } from "@/lib/arxiv/paper-source";
+import { readChatRuntimeOptions } from "@/lib/conductor/chat-runtime";
 import type { AnalyzedPaper } from "@/lib/arxiv/types";
 
 export const runtime = "nodejs";
@@ -50,6 +51,9 @@ export const dynamic = "force-dynamic";
 
 interface BindRequestBody {
   paperId?: string;
+  initialMessage?: string;
+  daemonHost?: string;
+  backendType?: string;
 }
 
 interface BindResult {
@@ -63,6 +67,10 @@ interface BindResult {
 // handlers share the module instance per worker, which is exactly the
 // concurrency surface we need to coordinate.
 const inflightBinds = new Map<string, Promise<BindResult>>();
+
+function optionalString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
 
 function authenticationRequired() {
   return NextResponse.json(
@@ -112,7 +120,11 @@ export async function POST(request: Request) {
       });
     }
 
-    const result = await bindWithDedup(session, paperId, paper);
+    const result = await bindWithDedup(session, paperId, paper, {
+      initialMessage: optionalString(body.initialMessage),
+      daemonHost: optionalString(body.daemonHost),
+      backendType: optionalString(body.backendType),
+    });
     return NextResponse.json(result);
   } catch (err) {
     return errorResponse(err);
@@ -123,6 +135,11 @@ async function bindWithDedup(
   session: AuthSession,
   paperId: string,
   paper: AnalyzedPaper,
+  options: {
+    initialMessage?: string;
+    daemonHost?: string;
+    backendType?: string;
+  },
 ): Promise<BindResult> {
   // Second-chance read: another in-flight bind may have committed between
   // the outer state read in `POST` and this point. Intentionally a fresh
@@ -141,19 +158,48 @@ async function bindWithDedup(
 
   const promise = (async (): Promise<BindResult> => {
     const settings = await readAppSettings(session.user.id);
-    const project = await bindArxivRadarProject(session);
+    const runtimeOptions = await readChatRuntimeOptions(session, settings, {
+      preferredDaemonHost: options.daemonHost,
+      preferredBackendType: options.backendType,
+    });
+    const daemonHost = runtimeOptions.selectedDaemonHost;
+    if (!daemonHost) {
+      throw new Error("请选择在线 Conductor daemon 后再创建 chat");
+    }
+    if (!runtimeOptions.workspacePath) {
+      throw new Error(
+        "无法获取 chat workspace。请确认所选 daemon 在线，并已在 Conductor daemon 配置 workspace。",
+      );
+    }
+
+    const selectedDaemon = runtimeOptions.daemons.find((daemon) => daemon.host === daemonHost);
+    if (
+      options.backendType &&
+      selectedDaemon?.supportedBackends.length &&
+      !selectedDaemon.supportedBackends.includes(options.backendType)
+    ) {
+      throw new Error(`${daemonHost} 不支持 backend ${options.backendType}`);
+    }
+
+    const project = await bindArxivRadarProject(session, {
+      daemonHost,
+      workspacePath: runtimeOptions.workspacePath,
+    });
     const client = await getConductorClient(session);
-    // Backend selection: settings-configured backend type maps to a key in
-    // the daemon's `allow_cli_list`. Empty / missing → let Conductor
-    // pick the daemon default. Trimmed so accidental whitespace in .env
-    // doesn't produce a bogus backend name like "  codex-fast " that the
-    // daemon will reject.
-    const backendType = settings.conductor.backendType || undefined;
+    const backendType = runtimeOptions.selectedBackendType || undefined;
+    const initialMessage = options.initialMessage || buildPaperInitialChatMessage(paper);
     const task = await client.tasks.create({
       projectId: project.id,
       title: paper.title.slice(0, 200),
-      initialMessage: buildInitialMessage(paper),
+      initialMessage,
       ...(backendType ? { backendType } : {}),
+      metadata: {
+        arxivRadar: {
+          paperId,
+          daemonHost,
+          workspacePath: runtimeOptions.workspacePath,
+        },
+      },
     });
 
     await setUserPaperTaskBinding(session.user.id, paperId, {
@@ -172,32 +218,6 @@ async function bindWithDedup(
       inflightBinds.delete(inflightKey);
     }
   }
-}
-
-/**
- * Initial chat message. This becomes the first row in `tasks.history()` and
- * IS visible to the user as a chat bubble, so it's phrased as a natural
- * opener rather than a system-style preamble. Guardrails are at the end so
- * the opening line still reads like a request, not an instruction.
- */
-function buildInitialMessage(paper: AnalyzedPaper): string {
-  const lines: string[] = [];
-  if (isExternalPdfPaper(paper)) {
-    lines.push(`我想和你讨论这篇非 arXiv PDF 论文：《${paper.title}》。`);
-    if (paper.pdfUrl) lines.push(`PDF 原文：${paper.pdfUrl}`);
-    lines.push("这篇论文没有 arXiv HTML 页面；需要时请直接读取 PDF 原文链接。");
-  } else {
-    lines.push(`我想和你讨论这篇 arXiv 论文：《${paper.title}》。`);
-    lines.push(`HTML 全文：${arxivHtmlUrl(paper)}`);
-    if (paper.pdfUrl) lines.push(`PDF：${paper.pdfUrl}`);
-    if (paper.arxivUrl) lines.push(`arXiv 摘要页：${paper.arxivUrl}`);
-  }
-  if (paper.authors?.length) {
-    lines.push(`作者：${paper.authors.join(", ")}`);
-  }
-  lines.push("");
-  lines.push("需要时请基于可访问的论文原文回答，不确定就说不知道，不要编实验数值或结论。");
-  return lines.join("\n");
 }
 
 // Intentionally single-arg (no taskId): a bind error implies we never had

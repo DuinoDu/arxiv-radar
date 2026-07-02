@@ -3,13 +3,17 @@
 import Link from "next/link";
 import type { MouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
+  AlertCircle,
   ChevronDown,
   FileText,
   Heart,
   History,
+  Loader2,
   MessageCircle,
   Plus,
+  Send,
   Tag,
   Trash2,
   X,
@@ -106,14 +110,80 @@ const CHAT_STATUS_POLL_MS = 15_000;
 type ChatLifecycleStatus = "running" | "killed";
 
 type ChatStatusPayload = {
+  boundPaperIds?: unknown;
   runningPaperIds?: unknown;
   killedPaperIds?: unknown;
+};
+
+type ChatDaemonOption = {
+  id: string;
+  host: string;
+  supportedBackends: string[];
+  runtimeBackendMap?: Record<string, string>;
+};
+
+type ChatOptionsPayload = {
+  appName?: unknown;
+  initialMessage?: unknown;
+  daemons?: unknown;
+  selectedDaemonHost?: unknown;
+  selectedBackendType?: unknown;
+  agentsError?: unknown;
+  error?: string;
 };
 
 type PaperListPayload = Partial<PaperListPage> & {
   ok?: boolean;
   error?: string;
 };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (typeof item !== "string") return [];
+    const trimmed = item.trim();
+    return trimmed ? [trimmed] : [];
+  });
+}
+
+function normalizeChatDaemons(value: unknown): ChatDaemonOption[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!isRecord(item)) return [];
+    const host = typeof item.host === "string" ? item.host.trim() : "";
+    if (!host) return [];
+    const id = typeof item.id === "string" && item.id.trim() ? item.id.trim() : host;
+    const runtimeBackendMap = isRecord(item.runtimeBackendMap)
+      ? Object.fromEntries(
+          Object.entries(item.runtimeBackendMap).flatMap(([key, raw]) => {
+            if (typeof raw !== "string") return [];
+            const normalizedKey = key.trim();
+            const normalizedValue = raw.trim();
+            return normalizedKey && normalizedValue ? [[normalizedKey, normalizedValue]] : [];
+          }),
+        )
+      : undefined;
+    return [{
+      id,
+      host,
+      supportedBackends: stringList(item.supportedBackends),
+      ...(runtimeBackendMap && Object.keys(runtimeBackendMap).length > 0
+        ? { runtimeBackendMap }
+        : {}),
+    }];
+  });
+}
+
+function composeInitialMessage(baseMessage: string, additionalQuestion: string) {
+  const base = baseMessage.trim();
+  const question = additionalQuestion.trim();
+  if (!question) return base;
+  return `${base}\n\n我的问题：\n${question}`;
+}
 
 function emptyCountsByTag(tagIds: readonly string[]): PaperCountsByTag {
   return Object.fromEntries(tagIds.map((tag) => [tag, 0])) as PaperCountsByTag;
@@ -574,6 +644,307 @@ function paperCardDomId(id: string) {
   return `paper-card-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
 }
 
+function ChatCreateDialog({
+  paper,
+  onClose,
+  onCreated,
+}: {
+  paper: AnalyzedPaper;
+  onClose: () => void;
+  onCreated: (paperId: string, targetWindow?: Window | null) => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState("");
+  const [agentsError, setAgentsError] = useState("");
+  const [daemons, setDaemons] = useState<ChatDaemonOption[]>([]);
+  const [daemonHost, setDaemonHost] = useState("");
+  const [backendType, setBackendType] = useState("");
+  const [message, setMessage] = useState("");
+  const [additionalQuestion, setAdditionalQuestion] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let cancelled = false;
+
+    async function loadOptions() {
+      setLoading(true);
+      setError("");
+      setAgentsError("");
+      try {
+        const params = new URLSearchParams({ paperId: paper.id });
+        const response = await fetch(`/api/conductor/chat-options?${params.toString()}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const payload = (await response.json().catch(() => ({}))) as ChatOptionsPayload;
+        if (!response.ok) {
+          throw new Error(payload.error || "读取 chat 配置失败");
+        }
+        if (cancelled) return;
+
+        const nextDaemons = normalizeChatDaemons(payload.daemons);
+        const selectedDaemonHost =
+          typeof payload.selectedDaemonHost === "string"
+            ? payload.selectedDaemonHost.trim()
+            : "";
+        const normalizedDaemons =
+          selectedDaemonHost && !nextDaemons.some((daemon) => daemon.host === selectedDaemonHost)
+            ? [{ id: selectedDaemonHost, host: selectedDaemonHost, supportedBackends: [] }, ...nextDaemons]
+            : nextDaemons;
+        const nextDaemonHost = selectedDaemonHost || normalizedDaemons[0]?.host || "";
+        const nextDaemon = normalizedDaemons.find((daemon) => daemon.host === nextDaemonHost);
+        const selectedBackendType =
+          typeof payload.selectedBackendType === "string"
+            ? payload.selectedBackendType.trim()
+            : "";
+        const backendIsAvailable =
+          !nextDaemon?.supportedBackends.length ||
+          nextDaemon.supportedBackends.includes(selectedBackendType);
+        setDaemons(normalizedDaemons);
+        setDaemonHost(nextDaemonHost);
+        setBackendType(
+          (selectedBackendType && backendIsAvailable ? selectedBackendType : "") ||
+            nextDaemon?.supportedBackends[0] ||
+            "",
+        );
+        setMessage(
+          typeof payload.initialMessage === "string" ? payload.initialMessage : "",
+        );
+        setAgentsError(
+          typeof payload.agentsError === "string" ? payload.agentsError : "",
+        );
+      } catch (err) {
+        if ((err as Error).name === "AbortError" || cancelled) return;
+        setError((err as Error).message || "读取 chat 配置失败");
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadOptions();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [paper.id]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !creating) {
+        onClose();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [creating, onClose]);
+
+  const selectedDaemon = daemons.find((daemon) => daemon.host === daemonHost);
+  const backendOptions = selectedDaemon?.supportedBackends ?? [];
+  const finalMessage = composeInitialMessage(message, additionalQuestion);
+  const canCreate = Boolean(daemonHost && finalMessage.trim() && !loading && !creating);
+
+  function selectDaemon(nextDaemonHost: string) {
+    setDaemonHost(nextDaemonHost);
+    const nextDaemon = daemons.find((daemon) => daemon.host === nextDaemonHost);
+    setBackendType(nextDaemon?.supportedBackends[0] ?? "");
+  }
+
+  async function createChat() {
+    if (!canCreate) return;
+    const targetWindow = window.open("about:blank", "_blank");
+    if (targetWindow) {
+      targetWindow.opener = null;
+    }
+    setCreating(true);
+    setError("");
+    try {
+      const response = await fetch("/api/conductor/bind", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paperId: paper.id,
+          daemonHost,
+          backendType,
+          initialMessage: finalMessage,
+        }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        taskId?: string;
+        error?: string;
+      };
+      if (!response.ok || !payload.taskId) {
+        throw new Error(payload.error || "创建 chat 失败");
+      }
+      onCreated(paper.id, targetWindow);
+    } catch (err) {
+      if (targetWindow && !targetWindow.closed) {
+        targetWindow.close();
+      }
+      setError((err as Error).message || "创建 chat 失败");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-zinc-950/40 px-3 py-4 backdrop-blur-sm sm:py-8"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="create-chat-title"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !creating) {
+          onClose();
+        }
+      }}
+    >
+      <div className="w-full max-w-3xl rounded-lg border border-zinc-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="flex items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+          <div className="min-w-0">
+            <h2 id="create-chat-title" className="truncate text-base font-semibold tracking-normal">
+              创建 chat
+            </h2>
+            <p className="mt-0.5 truncate text-xs text-zinc-500 dark:text-zinc-400">
+              {paper.title}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={creating}
+            aria-label="关闭"
+            title="关闭"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-950 disabled:cursor-not-allowed disabled:opacity-60 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-white"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="space-y-4 px-4 py-4">
+          {loading ? (
+            <div className="flex min-h-72 items-center justify-center text-sm text-zinc-500 dark:text-zinc-400">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+              加载中…
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block text-sm">
+                  <span className="mb-1.5 block text-zinc-600 dark:text-zinc-300">daemon</span>
+                  <select
+                    value={daemonHost}
+                    onChange={(event) => selectDaemon(event.target.value)}
+                    disabled={creating || daemons.length === 0}
+                    className="h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none transition focus:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-950 dark:focus:border-zinc-500"
+                  >
+                    {daemons.length === 0 ? (
+                      <option value="">无在线 daemon</option>
+                    ) : (
+                      daemons.map((daemon) => (
+                        <option key={daemon.host} value={daemon.host}>
+                          {daemon.host}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1.5 block text-zinc-600 dark:text-zinc-300">backend</span>
+                  <select
+                    value={backendType}
+                    onChange={(event) => setBackendType(event.target.value)}
+                    disabled={creating || backendOptions.length === 0}
+                    className="h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none transition focus:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-950 dark:focus:border-zinc-500"
+                  >
+                    {backendOptions.length === 0 ? (
+                      <option value="">默认</option>
+                    ) : (
+                      backendOptions.map((backend) => (
+                        <option key={backend} value={backend}>
+                          {backend}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </label>
+              </div>
+
+              <label className="block text-sm">
+                <span className="mb-1.5 block text-zinc-600 dark:text-zinc-300">第一条消息</span>
+                <textarea
+                  value={message}
+                  onChange={(event) => setMessage(event.target.value)}
+                  disabled={creating}
+                  className="min-h-56 w-full resize-y rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm leading-6 outline-none transition focus:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-70 dark:border-zinc-800 dark:bg-zinc-950 dark:focus:border-zinc-500"
+                />
+              </label>
+
+              <label className="block text-sm">
+                <span className="mb-1.5 block text-zinc-600 dark:text-zinc-300">追加问题</span>
+                <textarea
+                  value={additionalQuestion}
+                  onChange={(event) => setAdditionalQuestion(event.target.value)}
+                  disabled={creating}
+                  placeholder="可选"
+                  className="min-h-24 w-full resize-y rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm leading-6 outline-none transition focus:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-70 dark:border-zinc-800 dark:bg-zinc-950 dark:focus:border-zinc-500"
+                />
+              </label>
+
+              {agentsError ? (
+                <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span>{agentsError}</span>
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-3 border-t border-zinc-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-zinc-800">
+          <div className="min-h-5 text-sm">
+            {error ? (
+              <span className="inline-flex items-center gap-2 text-red-600 dark:text-red-400">
+                <AlertCircle className="h-4 w-4" aria-hidden="true" />
+                {error}
+              </span>
+            ) : null}
+          </div>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={creating}
+              className="inline-flex h-10 items-center rounded-md border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={createChat}
+              disabled={!canCreate}
+              className="inline-flex h-10 items-center gap-2 rounded-md bg-zinc-950 px-4 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200"
+            >
+              {creating ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <Send className="h-4 w-4" aria-hidden="true" />
+              )}
+              创建
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function PaperRow({
   paper,
   timeZone,
@@ -582,14 +953,13 @@ function PaperRow({
   highlighted,
   isEditingTags,
   removePending,
-  chatPending,
+  chatBound,
   chatDeletePending,
   allTagIds,
   dynamicLabels,
   tagIdSet,
   onToggleFavorite,
   onChatClick,
-  onChatCancel,
   onChatDeleteRequest,
   onChatDeleteConfirm,
   onChatDeleteCancel,
@@ -608,14 +978,13 @@ function PaperRow({
   highlighted: boolean;
   isEditingTags: boolean;
   removePending: boolean;
-  chatPending: boolean;
+  chatBound: boolean;
   chatDeletePending: boolean;
   allTagIds: readonly string[];
   dynamicLabels: Record<string, string>;
   tagIdSet: ReadonlySet<string>;
   onToggleFavorite: (id: string) => void;
   onChatClick: (id: string) => void;
-  onChatCancel: () => void;
   onChatDeleteRequest: (id: string) => void;
   onChatDeleteConfirm: (id: string) => void;
   onChatDeleteCancel: () => void;
@@ -635,8 +1004,8 @@ function PaperRow({
   ];
 
   // Single- vs double-click disambiguation for the idle chat button.
-  // A single click arms the inplace "chat?" confirm; a double click arms the
-  // inplace "del?" confirm that tears down the chat session + Conductor task.
+  // A single click opens or creates chat; a double click arms the "del?"
+  // confirm that tears down the chat session + Conductor task.
   // We can't lean on the browser's `dblclick` event here because each of its
   // two underlying `click`s would already drive the chat confirm forward (and
   // the second one would open the chat), so we count clicks against a short
@@ -656,14 +1025,18 @@ function PaperRow({
       // Second click within the window → double-click → delete intent.
       clearTimeout(chatClickTimerRef.current);
       chatClickTimerRef.current = null;
-      onChatDeleteRequest(paper.id);
+      if (chatBound) {
+        onChatDeleteRequest(paper.id);
+      } else {
+        onChatClick(paper.id);
+      }
       return;
     }
     chatClickTimerRef.current = setTimeout(() => {
       chatClickTimerRef.current = null;
       onChatClick(paper.id);
     }, 250);
-  }, [onChatClick, onChatDeleteRequest, paper.id]);
+  }, [chatBound, onChatClick, onChatDeleteRequest, paper.id]);
 
   return (
     <article
@@ -772,24 +1145,16 @@ function PaperRow({
               <MessageCircle className="h-4 w-4" aria-hidden="true" />
               del?
             </button>
-          ) : chatPending ? (
-            <button
-              type="button"
-              onClick={() => onChatClick(paper.id)}
-              onBlur={onChatCancel}
-              title="再次点击进入 chat"
-              aria-label={`${paper.title} 确认进入 chat`}
-              className="inline-flex h-9 items-center gap-1 rounded-md border border-emerald-300 bg-emerald-50 px-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-200 dark:hover:bg-emerald-950"
-            >
-              <MessageCircle className="h-4 w-4" aria-hidden="true" />
-              chat?
-            </button>
           ) : (
             <button
               type="button"
               onClick={handleIdleChatClick}
-              title={`${chatStatusTitle(chatStatus)}（双击删除会话）`}
-              aria-label={`${paper.title} chat${chatStatusAriaSuffix(chatStatus)}，双击删除会话`}
+              title={chatBound ? `${chatStatusTitle(chatStatus)}（双击删除会话）` : "创建 chat"}
+              aria-label={
+                chatBound
+                  ? `${paper.title} chat${chatStatusAriaSuffix(chatStatus)}，双击删除会话`
+                  : `${paper.title} 创建 chat`
+              }
               className="relative inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-900"
             >
               <MessageCircle className="h-4 w-4" aria-hidden="true" />
@@ -973,8 +1338,8 @@ export function PaperDashboard({
   const [editingPaperId, setEditingPaperId] = useState<string | null>(null);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null);
-  const [pendingChatId, setPendingChatId] = useState<string | null>(null);
   const [pendingChatDeleteId, setPendingChatDeleteId] = useState<string | null>(null);
+  const [chatDialogPaper, setChatDialogPaper] = useState<AnalyzedPaper | null>(null);
   const [summary, setSummary] = useState<PaperListSummary>(initialData.summary);
   const [summarySource, setSummarySource] = useState(initialData.summary);
   const [selectedDate, setSelectedDate] = useState<string | null>(initialData.selectedDate);
@@ -985,6 +1350,7 @@ export function PaperDashboard({
   const [nextPageOffset, setNextPageOffset] = useState(() => pageEndOffset(initialData.page));
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [boundChatPaperIds, setBoundChatPaperIds] = useState<Set<string>>(() => new Set());
   const [runningChatPaperIds, setRunningChatPaperIds] = useState<Set<string>>(() => new Set());
   const [killedChatPaperIds, setKilledChatPaperIds] = useState<Set<string>>(() => new Set());
   const loadSentinelRef = useRef<HTMLDivElement | null>(null);
@@ -1015,7 +1381,7 @@ export function PaperDashboard({
     setNextPageOffset(pageEndOffset(initialData.page));
     setLoadError(null);
     setPendingRemoveId(null);
-    setPendingChatId(null);
+    setChatDialogPaper(null);
     setPendingChatDeleteId(null);
   }
 
@@ -1258,19 +1624,15 @@ export function PaperDashboard({
     setPendingRemoveId(null);
   }, []);
 
-  const handleChatCancel = useCallback(() => {
-    setPendingChatId(null);
-  }, []);
-
   const handleChatDeleteCancel = useCallback(() => {
     setPendingChatDeleteId(null);
   }, []);
 
   const handleChatDeleteRequest = useCallback((paperId: string) => {
-    // Double-click on the chat button arms the inplace "del?" confirm. Drop any
-    // other pending "?" prompts so only one is visible at a time.
+    // Double-click on a bound chat button arms the "del?" confirm. Drop any
+    // other pending prompts so only one is visible at a time.
     setPendingRemoveId(null);
-    setPendingChatId(null);
+    setChatDialogPaper(null);
     setPendingChatDeleteId(paperId);
   }, []);
 
@@ -1279,6 +1641,12 @@ export function PaperDashboard({
     // task on the server, and optimistically clear the local chat-status dots
     // for this paper so the button returns to its neutral idle look.
     setPendingChatDeleteId(null);
+    setBoundChatPaperIds((prev) => {
+      if (!prev.has(paperId)) return prev;
+      const next = new Set(prev);
+      next.delete(paperId);
+      return next;
+    });
     setRunningChatPaperIds((prev) => {
       if (!prev.has(paperId)) return prev;
       const next = new Set(prev);
@@ -1306,40 +1674,77 @@ export function PaperDashboard({
       });
   }, []);
 
-  const handleChatClick = useCallback(
-    (paperId: string) => {
-      // Two-stage inplace confirm, mirroring the delete button:
-      //   1st click → enter pending state (button label becomes "chat?")
-      //   2nd click → open the chat page in a new tab and run the original
-      //   onChatStart side-effect (auto-favorite).
-      // Cancel any pending remove / chat-delete on a different row so we don't
-      // display two simultaneous "?" prompts.
-      setPendingRemoveId(null);
-      setPendingChatDeleteId(null);
-      setPendingChatId((current) => {
-        if (current !== paperId) {
-          return paperId;
-        }
-
-        // Browsers allow window.open inside a user-initiated click handler.
-        // Keep the same noreferrer semantics as the previous <a target="_blank">.
-        window.open(
-          `/papers/${encodeURIComponent(paperId)}/chat`,
-          "_blank",
-          "noreferrer",
-        );
-        addFavorite(paperId);
-        return null;
-      });
+  const openChatWindow = useCallback(
+    (paperId: string, targetWindow?: Window | null) => {
+      const url = `/papers/${encodeURIComponent(paperId)}/chat`;
+      if (targetWindow && !targetWindow.closed) {
+        targetWindow.location.href = url;
+      } else {
+        window.open(url, "_blank", "noreferrer");
+      }
+      addFavorite(paperId);
     },
     [addFavorite],
+  );
+
+  const handleChatCreated = useCallback(
+    (paperId: string, targetWindow?: Window | null) => {
+      setChatDialogPaper(null);
+      setBoundChatPaperIds((prev) => {
+        if (prev.has(paperId)) return prev;
+        const next = new Set(prev);
+        next.add(paperId);
+        return next;
+      });
+      setRunningChatPaperIds((prev) => {
+        if (prev.has(paperId)) return prev;
+        const next = new Set(prev);
+        next.add(paperId);
+        return next;
+      });
+      setKilledChatPaperIds((prev) => {
+        if (!prev.has(paperId)) return prev;
+        const next = new Set(prev);
+        next.delete(paperId);
+        return next;
+      });
+      openChatWindow(paperId, targetWindow);
+    },
+    [openChatWindow],
+  );
+
+  const handleChatClick = useCallback(
+    (paperId: string) => {
+      setPendingRemoveId(null);
+      setPendingChatDeleteId(null);
+      const hasExistingChat =
+        boundChatPaperIds.has(paperId) ||
+        runningChatPaperIds.has(paperId) ||
+        killedChatPaperIds.has(paperId);
+      if (hasExistingChat) {
+        openChatWindow(paperId);
+        return;
+      }
+
+      const paper = papers.find((candidate) => candidate.id === paperId);
+      if (paper) {
+        setChatDialogPaper(paper);
+      }
+    },
+    [
+      boundChatPaperIds,
+      killedChatPaperIds,
+      openChatWindow,
+      papers,
+      runningChatPaperIds,
+    ],
   );
 
   const handleRemoveClick = useCallback((paperId: string) => {
     // Two-stage inplace confirm:
     //   1st click → enter pending state (button label becomes "remove?")
     //   2nd click → actually remove the paper from the UI and notify the server.
-    setPendingChatId(null);
+    setChatDialogPaper(null);
     setPendingChatDeleteId(null);
     setPendingRemoveId((current) => {
       if (current !== paperId) {
@@ -1518,6 +1923,7 @@ export function PaperDashboard({
     if (summary.totalPapers === 0) {
       const timeoutId = window.setTimeout(() => {
         if (!cancelled) {
+          setBoundChatPaperIds(new Set());
           setRunningChatPaperIds(new Set());
           setKilledChatPaperIds(new Set());
         }
@@ -1536,12 +1942,16 @@ export function PaperDashboard({
         const payload = (await response.json().catch(() => ({}))) as ChatStatusPayload;
         if (
           !response.ok ||
+          !Array.isArray(payload.boundPaperIds) ||
           !Array.isArray(payload.runningPaperIds) ||
           !Array.isArray(payload.killedPaperIds)
         ) {
           throw new Error("Failed to fetch chat status");
         }
 
+        const nextBoundIds = payload.boundPaperIds.filter(
+          (paperId): paperId is string => typeof paperId === "string",
+        );
         const nextRunningIds = payload.runningPaperIds.filter(
           (paperId): paperId is string => typeof paperId === "string",
         );
@@ -1549,6 +1959,9 @@ export function PaperDashboard({
           (paperId): paperId is string => typeof paperId === "string",
         );
         if (!cancelled) {
+          setBoundChatPaperIds((current) =>
+            sameStringSet(current, nextBoundIds) ? current : new Set(nextBoundIds),
+          );
           setRunningChatPaperIds((current) =>
             sameStringSet(current, nextRunningIds) ? current : new Set(nextRunningIds),
           );
@@ -1880,14 +2293,17 @@ export function PaperDashboard({
                 highlighted={focusedPaperId === paper.id}
                 isEditingTags={editingPaperId === paper.id}
                 removePending={pendingRemoveId === paper.id}
-                chatPending={pendingChatId === paper.id}
+                chatBound={
+                  boundChatPaperIds.has(paper.id) ||
+                  runningChatPaperIds.has(paper.id) ||
+                  killedChatPaperIds.has(paper.id)
+                }
                 chatDeletePending={pendingChatDeleteId === paper.id}
                 allTagIds={tagIds}
                 dynamicLabels={dynamicLabels}
                 tagIdSet={tagIdSet}
                 onToggleFavorite={toggleFavorite}
                 onChatClick={handleChatClick}
-                onChatCancel={handleChatCancel}
                 onChatDeleteRequest={handleChatDeleteRequest}
                 onChatDeleteConfirm={handleChatDeleteConfirm}
                 onChatDeleteCancel={handleChatDeleteCancel}
@@ -1951,6 +2367,13 @@ export function PaperDashboard({
 
         <RecentRuns runs={summary.runs} timeZone={timeZone} />
       </div>
+      {chatDialogPaper ? (
+        <ChatCreateDialog
+          paper={chatDialogPaper}
+          onClose={() => setChatDialogPaper(null)}
+          onCreated={handleChatCreated}
+        />
+      ) : null}
     </main>
   );
 }

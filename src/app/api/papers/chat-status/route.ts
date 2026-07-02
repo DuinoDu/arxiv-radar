@@ -7,6 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type ChatStatusResponse = {
+  boundPaperIds: string[];
   runningPaperIds: string[];
   killedPaperIds: string[];
 };
@@ -38,6 +39,7 @@ export async function GET() {
   const session = await getCurrentAuthSession();
   if (!session) {
     return NextResponse.json({
+      boundPaperIds: [],
       runningPaperIds: [],
       killedPaperIds: [],
     } satisfies ChatStatusResponse);
@@ -59,6 +61,7 @@ export async function GET() {
 
   if (paperTasks.length === 0) {
     return NextResponse.json({
+      boundPaperIds: [],
       runningPaperIds: [],
       killedPaperIds: [],
     } satisfies ChatStatusResponse);
@@ -98,12 +101,14 @@ export async function GET() {
     }
 
     return NextResponse.json({
+      boundPaperIds: paperTasks.map((binding) => binding.paperId),
       runningPaperIds,
       killedPaperIds,
     } satisfies ChatStatusResponse);
   } catch (error) {
     console.warn("[paper-chat-status] failed to read chat task status", error);
     return NextResponse.json({
+      boundPaperIds: paperTasks.map((binding) => binding.paperId),
       runningPaperIds: [],
       killedPaperIds: [],
     } satisfies ChatStatusResponse);

@@ -102,6 +102,11 @@ export async function getConductorClient(session?: AuthSession): Promise<AppClie
   return promise;
 }
 
+interface BindArxivRadarProjectOptions {
+  daemonHost?: string;
+  workspacePath?: string;
+}
+
 /**
  * Idempotent project binding for this app. Matches Conductor's existing
  * project by (daemonHost, workspacePath); creates one on miss.
@@ -115,12 +120,15 @@ export async function getConductorClient(session?: AuthSession): Promise<AppClie
  * local mkdir is harmless (creates a useless dir on the BFF host) — the
  * remote daemon will still 4xx and the operator can provision the path.
  */
-export async function bindArxivRadarProject(session?: AuthSession) {
+export async function bindArxivRadarProject(
+  session?: AuthSession,
+  options: BindArxivRadarProjectOptions = {},
+) {
   const settings = session
     ? await readAppSettings(session.user.id)
     : createEnvAppSettings();
   const rawWorkspacePath = requireConductorValue(
-    settings.conductor.workspacePath,
+    options.workspacePath || settings.conductor.workspacePath,
     "workspacePath",
   );
   const workspacePath = rawWorkspacePath.startsWith("~/")
@@ -144,8 +152,11 @@ export async function bindArxivRadarProject(session?: AuthSession) {
 
   const client = await getConductorClient(session);
   return client.projects.bind({
-    name: settings.conductor.appName || DEFAULT_CONDUCTOR_APP_NAME,
-    daemonHost: requireConductorValue(settings.conductor.daemonHost, "daemonHost"),
+    name: DEFAULT_CONDUCTOR_APP_NAME,
+    daemonHost: requireConductorValue(
+      options.daemonHost || settings.conductor.daemonHost,
+      "daemonHost",
+    ),
     workspacePath,
   });
 }

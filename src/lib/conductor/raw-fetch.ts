@@ -9,8 +9,7 @@
  * call those endpoints directly here.
  *
  * Auth/base URL: reuses the same app settings the SDK client uses. This means
- * the BFF trust boundary is unchanged — the token never leaves Node except
- * when the user edits it in the settings popup.
+ * the BFF trust boundary is unchanged — the token never leaves Node.
  */
 import { createEnvAppSettings, requireConductorValue } from "@/lib/app-settings";
 import type { AuthSession } from "@/lib/auth/session";
@@ -37,6 +36,17 @@ export interface ConductorRawError {
   body?: unknown;
 }
 
+export interface ConductorAgentOption {
+  id: string;
+  host: string;
+  supportedBackends: string[];
+  runtimeBackendMap?: Record<string, string>;
+  capabilities?: string[];
+  version?: string;
+  workspaceRoot?: string;
+  workspacePath?: string;
+}
+
 function makeError(status: number, body: unknown, fallback: string): ConductorRawError {
   const message =
     body && typeof body === "object" && "error" in body
@@ -47,6 +57,101 @@ function makeError(status: number, body: unknown, fallback: string): ConductorRa
       ? String((body as { code?: unknown }).code ?? "")
       : undefined;
   return { status, code: code || undefined, message, body };
+}
+
+function stringFromRecord(record: Record<string, unknown>, ...keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return "";
+}
+
+function stringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (typeof item !== "string") return [];
+    const trimmed = item.trim();
+    return trimmed ? [trimmed] : [];
+  });
+}
+
+function stringRecord(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const result: Record<string, string> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    if (typeof raw !== "string") continue;
+    const normalizedKey = key.trim();
+    const normalizedValue = raw.trim();
+    if (!normalizedKey || !normalizedValue) continue;
+    result[normalizedKey] = normalizedValue;
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function normalizeConductorAgent(value: unknown): ConductorAgentOption | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const host = stringFromRecord(record, "host", "daemonHost", "daemon_host");
+  if (!host) return null;
+  const id = stringFromRecord(record, "id") || host;
+  const runtimeBackendMap = stringRecord(record.runtimeBackendMap ?? record.runtime_backend_map);
+  const capabilities = stringArray(record.capabilities);
+  const version = stringFromRecord(record, "version");
+  const workspaceRoot = stringFromRecord(
+    record,
+    "workspaceRoot",
+    "workspace_root",
+    "workspace",
+  );
+  const workspacePath = stringFromRecord(
+    record,
+    "workspacePath",
+    "workspace_path",
+    "projectWorkspacePath",
+    "project_workspace_path",
+  );
+  return {
+    id,
+    host,
+    supportedBackends: stringArray(record.supportedBackends ?? record.supported_backends),
+    ...(runtimeBackendMap ? { runtimeBackendMap } : {}),
+    ...(capabilities.length ? { capabilities } : {}),
+    ...(version ? { version } : {}),
+    ...(workspaceRoot ? { workspaceRoot } : {}),
+    ...(workspacePath ? { workspacePath } : {}),
+  };
+}
+
+/**
+ * Read live Conductor daemon registrations. The public Conductor route returns
+ * the current user's connected agents with their advertised backend aliases.
+ */
+export async function listConductorAgents(session?: AuthSession): Promise<ConductorAgentOption[]> {
+  const config = await getRawConductorConfig(session);
+  const url = `${config.baseUrl}/api/agents`;
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      Authorization: config.authHeader,
+    },
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw makeError(response.status, body, `agents failed (${response.status})`);
+  }
+  const rawAgents = Array.isArray(body)
+    ? body
+    : body && typeof body === "object" && Array.isArray((body as { agents?: unknown }).agents)
+      ? (body as { agents: unknown[] }).agents
+      : [];
+  return rawAgents.flatMap((entry) => {
+    const agent = normalizeConductorAgent(entry);
+    return agent ? [agent] : [];
+  });
 }
 
 /**

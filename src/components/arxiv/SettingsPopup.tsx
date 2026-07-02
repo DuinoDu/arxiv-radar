@@ -24,14 +24,6 @@ const FIELD_HELP = {
     "arXiv 列表页链接，决定每天拉取哪些论文。到 arxiv.org 选好分类后复制地址栏链接，例如机器人方向：https://arxiv.org/list/cs.RO/recent?skip=0&show=100",
   autoFetch:
     "开启后系统会每天在右侧设定的时间，按上面的拉取链接自动抓取并分析新论文。时间为 24 小时制，使用服务器时区。",
-  daemonHost:
-    "运行 AI 论文对话的后台主机名（Conductor daemon host），由你的 Conductor 环境提供，例如 m1。",
-  backendType:
-    "AI 后端类型，决定用哪个模型跑论文对话，例如 codex 或 claude。留空则使用服务端默认值。",
-  workspacePath:
-    "论文对话使用的工作区目录（绝对路径），例如 ~/ws/workspace。首次绑定时会自动创建该目录。",
-  appName:
-    "在 Conductor 中创建的应用名称，用于隔离本应用的对话任务。默认 arxiv-radar-chat，一般保持默认即可。",
   tags:
     "自定义论文标签，用于自动分类与筛选。ID 为英文小写标识（如 vla），显示名为界面上展示的文字（如 VLA）。",
 } as const;
@@ -39,8 +31,6 @@ const FIELD_HELP = {
 /** Fields a user must fill before the app becomes usable. Mirrors isAppConfigured(). */
 const REQUIRED_FIELDS = [
   { key: "arxivDailyUrl", label: "拉取链接" },
-  { key: "conductorDaemonHost", label: "daemon" },
-  { key: "conductorWorkspacePath", label: "workspace" },
 ] as const;
 
 function HelpTip({ text }: { text: string }) {
@@ -416,56 +406,6 @@ export function SettingsPopup({ requireSetup = false }: { requireSetup?: boolean
                         请联系管理员支持此功能
                       </p>
                     )}
-                  </section>
-
-                  <section className="space-y-3">
-                    <h3 className="text-sm font-semibold tracking-normal">chat</h3>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <label className="block text-sm">
-                        <FieldLabel help={FIELD_HELP.daemonHost} required>
-                          daemon
-                        </FieldLabel>
-                        <input
-                          type="text"
-                          value={form.conductorDaemonHost}
-                          onChange={(event) => updateField("conductorDaemonHost", event.target.value)}
-                          className="h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none transition focus:border-zinc-500 dark:border-zinc-800 dark:bg-zinc-950 dark:focus:border-zinc-500"
-                          placeholder="m1"
-                        />
-                      </label>
-                      <label className="block text-sm">
-                        <FieldLabel help={FIELD_HELP.backendType}>AI backend</FieldLabel>
-                        <input
-                          type="text"
-                          value={form.conductorBackendType}
-                          onChange={(event) => updateField("conductorBackendType", event.target.value)}
-                          className="h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none transition focus:border-zinc-500 dark:border-zinc-800 dark:bg-zinc-950 dark:focus:border-zinc-500"
-                          placeholder="codex"
-                        />
-                      </label>
-                      <label className="block text-sm sm:col-span-2">
-                        <FieldLabel help={FIELD_HELP.workspacePath} required>
-                          workspace
-                        </FieldLabel>
-                        <input
-                          type="text"
-                          value={form.conductorWorkspacePath}
-                          onChange={(event) => updateField("conductorWorkspacePath", event.target.value)}
-                          className="h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none transition focus:border-zinc-500 dark:border-zinc-800 dark:bg-zinc-950 dark:focus:border-zinc-500"
-                          placeholder="~/ws/workspace"
-                        />
-                      </label>
-                      <label className="block text-sm sm:col-span-2">
-                        <FieldLabel help={FIELD_HELP.appName}>app name</FieldLabel>
-                        <input
-                          type="text"
-                          value={form.conductorAppName}
-                          onChange={(event) => updateField("conductorAppName", event.target.value)}
-                          className="h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none transition focus:border-zinc-500 dark:border-zinc-800 dark:bg-zinc-950 dark:focus:border-zinc-500"
-                          placeholder={DEFAULT_APP_NAME}
-                        />
-                      </label>
-                    </div>
                   </section>
 
                   <section className="space-y-3">

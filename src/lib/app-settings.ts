@@ -94,7 +94,7 @@ export function createEnvAppSettings(): AppSettings {
       token: process.env.CONDUCTOR_TOKEN?.trim() || "",
       daemonHost: process.env.CONDUCTOR_DAEMON_HOST?.trim() || "",
       workspacePath: process.env.CONDUCTOR_WORKSPACE_PATH?.trim() || "",
-      appName: process.env.CONDUCTOR_APP_NAME?.trim() || DEFAULT_CONDUCTOR_APP_NAME,
+      appName: DEFAULT_CONDUCTOR_APP_NAME,
       backendType: process.env.CONDUCTOR_BACKEND_TYPE?.trim() || "",
     },
     // Empty by default; users define their own tags during onboarding.
@@ -103,18 +103,12 @@ export function createEnvAppSettings(): AppSettings {
 }
 
 /**
- * Whether a user has supplied the minimum settings required to actually use
- * the app: an arXiv source URL to fetch papers and the Conductor daemon host +
- * workspace needed to run paper chats. `baseUrl`/`token` come from the SSO
- * session (no popup field) so they are intentionally excluded here, and
- * `backendType`/`appName`/`tags` are optional.
+ * Whether a user has supplied the minimum settings required to use the paper
+ * radar. Chat runtime selection happens in the create-chat dialog, not in the
+ * global settings popup.
  */
 export function isAppConfigured(settings: AppSettings): boolean {
-  return Boolean(
-    settings.arxivDailyUrl.trim() &&
-      settings.conductor.daemonHost.trim() &&
-      settings.conductor.workspacePath.trim(),
-  );
+  return Boolean(settings.arxivDailyUrl.trim());
 }
 
 function normalizeTagConfigs(value: unknown, fallback: TagConfig[]): TagConfig[] {
@@ -151,7 +145,7 @@ export function normalizeAppSettings(
       token: stringValue(conductor.token, fallback.conductor.token),
       daemonHost: stringValue(conductor.daemonHost, fallback.conductor.daemonHost),
       workspacePath: stringValue(conductor.workspacePath, fallback.conductor.workspacePath),
-      appName: stringValue(conductor.appName, fallback.conductor.appName) || DEFAULT_CONDUCTOR_APP_NAME,
+      appName: DEFAULT_CONDUCTOR_APP_NAME,
       backendType: stringValue(conductor.backendType, fallback.conductor.backendType),
     },
     tags: normalizeTagConfigs(root.tags, fallback.tags),
@@ -211,10 +205,10 @@ export function settingsFromPublicInput(
     conductor: {
       baseUrl: conductorBaseUrl,
       token: conductorToken || current.conductor.token,
-      daemonHost: stringValue(input.conductorDaemonHost, current.conductor.daemonHost),
-      workspacePath: stringValue(input.conductorWorkspacePath, current.conductor.workspacePath),
-      appName: stringValue(input.conductorAppName, current.conductor.appName) || DEFAULT_CONDUCTOR_APP_NAME,
-      backendType: stringValue(input.conductorBackendType, current.conductor.backendType),
+      daemonHost: current.conductor.daemonHost,
+      workspacePath: current.conductor.workspacePath,
+      appName: DEFAULT_CONDUCTOR_APP_NAME,
+      backendType: current.conductor.backendType,
     },
     tags: normalizeTagConfigs(input.tags, current.tags),
   };
@@ -223,7 +217,7 @@ export function settingsFromPublicInput(
 export function requireConductorValue(value: string, key: string) {
   if (!value) {
     throw new Error(
-      `Missing Conductor setting ${key}. Configure it from the settings popup or set the matching env var.`,
+      `Missing Conductor setting ${key}. Configure it from the create-chat dialog or set the matching env var.`,
     );
   }
   return value;
