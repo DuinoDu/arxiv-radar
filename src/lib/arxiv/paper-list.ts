@@ -231,6 +231,11 @@ export function getPaperListPage(
     dateKey: options.dateKey,
     timeZone: options.timeZone,
   });
+  // Within a single day, rank by relevance score (unscored papers keep their
+  // original order at the end).
+  if (options.dateKey) {
+    filtered.sort((a, b) => (b.relevanceScore ?? -1) - (a.relevanceScore ?? -1));
+  }
   const papers = filtered.slice(offset, offset + limit);
 
   return {

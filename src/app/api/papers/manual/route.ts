@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { analyzeArticle } from "@/lib/arxiv/analyzer";
 import { ExternalPdfError, fetchExternalPdfArticle } from "@/lib/arxiv/external-pdf";
 import { fetchArticleMetadata, normalizeArxivId } from "@/lib/arxiv/fetcher";
+import { scoreArticles } from "@/lib/arxiv/scorer";
 import { normalizeXOrXhsUrl } from "@/lib/arxiv/social-links";
 import { addManualPaper, readAppSettings, readArxivState } from "@/lib/arxiv/store";
 import { PAPER_TAGS, type AnalyzedPaper, type AppSettings, type ArxivArticle, type PaperTag } from "@/lib/arxiv/types";
@@ -156,8 +156,12 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      const { papers, failures } = await scoreArticles([article], runId);
+      if (!papers[0]) {
+        throw new Error(failures[0]?.error ?? "打分失败");
+      }
       finalPaper = {
-        ...mergeTags(await analyzeArticle(article, runId), manualTags),
+        ...mergeTags(papers[0], manualTags),
         ...(manualXUrl ? { xUrl: manualXUrl } : {}),
       };
     } else {

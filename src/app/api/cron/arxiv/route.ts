@@ -60,7 +60,7 @@ function runOptions(
   trigger: "cron" | "manual",
 ) {
   return {
-    limit: Number(request.nextUrl.searchParams.get("limit") || 100),
+    limit: Number(request.nextUrl.searchParams.get("limit") || 500),
     force: request.nextUrl.searchParams.get("force") === "1",
     reanalyzeExisting:
       request.nextUrl.searchParams.get("reanalyze") === "existing" ||

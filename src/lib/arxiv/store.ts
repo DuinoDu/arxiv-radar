@@ -12,6 +12,7 @@ import {
   type ArxivArticle,
   type ArxivState,
   type FullTextStatus,
+  type PaperScoreDetail,
   type PaperTag,
   type PaperTagSource,
   type PaperTaskBinding,
@@ -71,6 +72,9 @@ type PaperRow = QueryResultRow & {
   analyzed_at: string;
   run_id: string;
   removed: boolean;
+  relevance_score: number | null;
+  quality_score: number | null;
+  score_detail: unknown;
 };
 
 type TagRow = QueryResultRow & {
@@ -144,6 +148,17 @@ function stringArray(value: unknown): string[] {
   }
   if (!Array.isArray(parsed)) return [];
   return parsed.filter((item): item is string => typeof item === "string");
+}
+
+function jsonObject<T>(value: unknown): T | undefined {
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      return undefined;
+    }
+  }
+  return value && typeof value === "object" ? (value as T) : undefined;
 }
 
 function numberOrNull(value: number | undefined) {
@@ -429,6 +444,9 @@ function paperFromRow(row: PaperRow, tagRows: TagRow[] = []): AnalyzedPaper {
     analyzedAt: row.analyzed_at,
     runId: row.run_id,
     removed: Boolean(row.removed),
+    relevanceScore: row.relevance_score ?? undefined,
+    qualityScore: row.quality_score ?? undefined,
+    scoreDetail: jsonObject<PaperScoreDetail>(row.score_detail),
   };
 }
 
@@ -460,7 +478,10 @@ async function readPapersForUser(userId: string) {
         up.confidence,
         up.analyzed_at,
         up.run_id,
-        up.removed
+        up.removed,
+        up.relevance_score,
+        up.quality_score,
+        up.score_detail
       FROM user_papers up
       INNER JOIN papers p ON p.id = up.paper_id
       WHERE up.user_id = $1
@@ -751,9 +772,12 @@ async function saveUserPaper(
         analyzed_at,
         run_id,
         removed,
-        source
+        source,
+        relevance_score,
+        quality_score,
+        score_detail
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb)
       ON CONFLICT (user_id, paper_id) DO UPDATE SET
         summary = EXCLUDED.summary,
         hypothesis = EXCLUDED.hypothesis,
@@ -766,6 +790,9 @@ async function saveUserPaper(
         run_id = EXCLUDED.run_id,
         removed = EXCLUDED.removed,
         source = EXCLUDED.source,
+        relevance_score = EXCLUDED.relevance_score,
+        quality_score = EXCLUDED.quality_score,
+        score_detail = EXCLUDED.score_detail,
         updated_at = now()
     `,
     [
@@ -782,6 +809,9 @@ async function saveUserPaper(
       paper.runId,
       options.removed ?? Boolean(paper.removed),
       options.source,
+      numberOrNull(paper.relevanceScore),
+      numberOrNull(paper.qualityScore),
+      paper.scoreDetail ? JSON.stringify(paper.scoreDetail) : null,
     ],
   );
   await replacePaperTags(client, userId, paper.id, paper);

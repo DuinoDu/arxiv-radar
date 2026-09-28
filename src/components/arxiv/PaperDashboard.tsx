@@ -945,6 +945,109 @@ function ChatCreateDialog({
   );
 }
 
+const QUALITY_DIMENSIONS: Array<[string, string]> = [
+  ["novelty", "创新性"],
+  ["soundness", "技术严谨性"],
+  ["experiments", "实验完整性"],
+  ["real_world", "真实世界验证"],
+  ["impact", "影响力与通用性"],
+  ["reproducibility", "可复现性与表达"],
+];
+
+function scoreBadgeClass(score: number) {
+  if (score >= 8) return "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-300";
+  if (score >= 6) return "border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-900 dark:bg-sky-950/50 dark:text-sky-300";
+  if (score >= 4) return "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-300";
+  return "border-zinc-300 bg-zinc-50 text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400";
+}
+
+function ScoreBadges({ paper }: { paper: AnalyzedPaper }) {
+  if (typeof paper.relevanceScore !== "number") return null;
+  const recommendation = paper.scoreDetail?.quality?.recommendation;
+  return (
+    <>
+      <span
+        title={paper.scoreDetail?.relevance.reason}
+        className={`rounded border px-1.5 py-0.5 font-semibold ${scoreBadgeClass(paper.relevanceScore)}`}
+      >
+        相关 {paper.relevanceScore}
+      </span>
+      {typeof paper.qualityScore === "number" ? (
+        <span className={`rounded border px-1.5 py-0.5 font-semibold ${scoreBadgeClass(paper.qualityScore)}`}>
+          质量 {paper.qualityScore}
+          {recommendation ? ` · ${recommendation}` : ""}
+        </span>
+      ) : null}
+    </>
+  );
+}
+
+function ListBlock({ label, items }: { label: string; items?: string[] }) {
+  if (!items?.length) return null;
+  return (
+    <div className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
+      <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{label}</div>
+      <ul className="mt-1 list-disc space-y-1 pl-5 text-sm leading-6 text-zinc-800 dark:text-zinc-200">
+        {items.map((item) => (
+          <li key={item} className="break-words">{item}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function ScoreDetails({ paper }: { paper: AnalyzedPaper }) {
+  const detail = paper.scoreDetail;
+  if (!detail) return null;
+  const quality = detail.quality;
+  return (
+    <div className="space-y-3">
+      <div className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
+        <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+          相关度 {detail.relevance.score}
+          {detail.relevance.matchedDirections.length
+            ? ` · 命中方向 ${detail.relevance.matchedDirections.join(", ")}`
+            : ""}
+        </div>
+        <p className="mt-1 break-words text-sm leading-6 text-zinc-800 dark:text-zinc-200">
+          {detail.relevance.reason}
+        </p>
+      </div>
+      {quality ? (
+        <>
+          <div className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
+            <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+              质量 {quality.total}
+              {quality.recommendation ? ` · ${quality.recommendation}` : ""}
+              {quality.confidence ? ` · 置信度 ${quality.confidence}` : ""}
+              {quality.capApplied ? ` · 上限：${quality.capApplied}` : ""}
+            </div>
+            <dl className="mt-2 space-y-2">
+              {QUALITY_DIMENSIONS.map(([key, label]) =>
+                typeof quality.scores[key] === "number" ? (
+                  <div key={key} className="grid grid-cols-[7rem_2.5rem_1fr] items-start gap-2 text-sm">
+                    <dt className="text-zinc-600 dark:text-zinc-400">{label}</dt>
+                    <dd className="font-semibold text-zinc-900 dark:text-zinc-100">{quality.scores[key]}</dd>
+                    <dd className="break-words leading-6 text-zinc-700 dark:text-zinc-300">
+                      {quality.scoreReasons?.[key]}
+                    </dd>
+                  </div>
+                ) : null,
+              )}
+            </dl>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <ListBlock label="优点" items={quality.strengths} />
+            <ListBlock label="缺点" items={quality.weaknesses} />
+            <ListBlock label="审稿问题" items={quality.questions} />
+            <ListBlock label="最接近的工作" items={quality.closestWork} />
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 function PaperRow({
   paper,
   timeZone,
@@ -1003,6 +1106,12 @@ function PaperRow({
     ["结论", paper.conclusion],
   ];
 
+  // Papers scored for relevance but outside the top half (no quality score)
+  // render as a one-line row until expanded.
+  const [expanded, setExpanded] = useState(
+    typeof paper.relevanceScore !== "number" || typeof paper.qualityScore === "number",
+  );
+
   // Single- vs double-click disambiguation for the idle chat button.
   // A single click opens or creates chat; a double click arms the "del?"
   // confirm that tears down the chat session + Conductor task.
@@ -1038,6 +1147,22 @@ function PaperRow({
     }, 250);
   }, [chatBound, onChatClick, onChatDeleteRequest, paper.id]);
 
+  if (!expanded) {
+    return (
+      <button
+        type="button"
+        id={paperCardDomId(paper.id)}
+        onClick={() => setExpanded(true)}
+        title="低相关论文，点击展开"
+        className="flex w-full items-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2 text-left text-xs text-zinc-500 transition hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400 dark:hover:bg-zinc-900"
+      >
+        <ChevronDown className="h-4 w-4 shrink-0" aria-hidden="true" />
+        <ScoreBadges paper={paper} />
+        <span className="min-w-0 truncate text-sm text-zinc-700 dark:text-zinc-300">{paper.title}</span>
+      </button>
+    );
+  }
+
   return (
     <article
       id={paperCardDomId(paper.id)}
@@ -1050,6 +1175,7 @@ function PaperRow({
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+            <ScoreBadges paper={paper} />
             <span>{paper.id}</span>
             {paper.publishedAt ? <span>{formatDate(paper.publishedAt, timeZone)}</span> : null}
             {paper.categories.slice(0, 2).map((category) => (
@@ -1249,8 +1375,10 @@ function PaperRow({
             </div>
           </div>
 
+          <ScoreDetails paper={paper} />
+
           <dl className="grid gap-3 md:grid-cols-2">
-            {detailItems.map(([label, value]) => (
+            {detailItems.filter(([, value]) => value).map(([label, value]) => (
               <div key={label} className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
                 <dt className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{label}</dt>
                 <dd className="mt-1 break-words text-sm leading-6 text-zinc-800 dark:text-zinc-200">{value}</dd>

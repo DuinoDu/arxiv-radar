@@ -139,7 +139,7 @@ export function RunAnalysisButton({
         className="inline-flex min-h-10 items-center gap-2 rounded-md bg-zinc-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200"
       >
         {icon}
-        {state === "running" ? "分析中" : "立即分析"}
+        {state === "running" ? "打分中" : "立即打分"}
       </button>
       {disabled ? <p className="max-w-72 text-left text-xs text-zinc-500 dark:text-zinc-400 sm:text-right">手动触发已关闭</p> : null}
       {message ? (

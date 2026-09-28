@@ -26,6 +26,34 @@ export interface ArxivArticle {
   pdfUrl?: string;
 }
 
+export interface PaperRelevanceDetail {
+  score: number;
+  primaryDirection?: number | null;
+  matchedDirections: number[];
+  reason: string;
+}
+
+/** One item of the quality prompt output (claw/prompts/paper-quality-scoring.md). */
+export interface PaperQualityDetail {
+  total: number;
+  inputLevel?: string;
+  summary?: string;
+  closestWork?: string[];
+  scores: Record<string, number>;
+  scoreReasons?: Record<string, string>;
+  capApplied?: string | null;
+  recommendation?: string;
+  strengths?: string[];
+  weaknesses?: string[];
+  questions?: string[];
+  confidence?: string;
+}
+
+export interface PaperScoreDetail {
+  relevance: PaperRelevanceDetail;
+  quality?: PaperQualityDetail;
+}
+
 export interface AnalyzedPaper extends ArxivArticle {
   summary: string;
   hypothesis: string;
@@ -47,6 +75,11 @@ export interface AnalyzedPaper extends ArxivArticle {
   confidence?: number;
   analyzedAt: string;
   runId: string;
+  /** Interest relevance score (0–10); present for papers scored by the daily job. */
+  relevanceScore?: number;
+  /** Review quality score (0–10); only set for the top half by relevance. */
+  qualityScore?: number;
+  scoreDetail?: PaperScoreDetail;
   /**
    * When true, this paper is hidden from the frontend. We keep the row in
    * storage (rather than deleting it) so the next analysis run doesn't

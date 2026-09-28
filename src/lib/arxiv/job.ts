@@ -1,7 +1,7 @@
 import { query } from "@/lib/db";
-import { analyzeArticles } from "./analyzer";
 import { ARXIV_RECENT_URL, fetchArticleMetadata, fetchRecentArticleIds } from "./fetcher";
 import { createRunLogger } from "./run-logger";
+import { scoreArticles } from "./scorer";
 import {
   findActiveRunForUser,
   finishRun,
@@ -31,7 +31,7 @@ export class AnalysisAlreadyRunningError extends Error {
   }
 }
 
-const DEFAULT_LIMIT = 100;
+const DEFAULT_LIMIT = 500;
 const EXISTING_PAPERS_SOURCE = "local:existing-papers";
 
 const activeRuns = new Map<string, Promise<RunArxivAnalysisResult>>();
@@ -45,7 +45,7 @@ function toLimit(value?: number) {
     return DEFAULT_LIMIT;
   }
 
-  return Math.min(Math.max(1, Math.floor(value ?? DEFAULT_LIMIT)), 100);
+  return Math.min(Math.max(1, Math.floor(value ?? DEFAULT_LIMIT)), DEFAULT_LIMIT);
 }
 
 function createInitialRun(sourceUrl: string): AnalysisRun {
@@ -180,15 +180,10 @@ async function runArxivAnalysisInternal(
     if (articlesToAnalyze.length === 0) {
       logger.info("nothing to analyze; finishing run");
     } else {
-      logger.info(`starting per-paper analysis for ${articlesToAnalyze.length} paper(s)`);
+      logger.info(`starting scoring for ${articlesToAnalyze.length} paper(s)`);
     }
 
-    const { papers, failures } = await analyzeArticles(
-      articlesToAnalyze,
-      run.id,
-      undefined,
-      logger,
-    );
+    const { papers, failures } = await scoreArticles(articlesToAnalyze, run.id, logger);
     const allAttemptedPapersFailed =
       articlesToAnalyze.length > 0 &&
       papers.length === 0 &&

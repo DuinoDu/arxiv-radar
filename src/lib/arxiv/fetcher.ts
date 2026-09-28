@@ -131,11 +131,26 @@ export async function fetchRecentArticleIds(
   sourceUrl = ARXIV_RECENT_URL,
   limit = 100,
 ) {
-  const html = await fetchText(sourceUrl);
+  // arXiv list pages (`/recent`, `/new`) have one `<dl id="articles">` per
+  // section. Keep only the latest day: the first section, plus the "Cross
+  // submissions" section on `/new`. Request a large page so a busy day is
+  // never truncated.
+  const url = new URL(sourceUrl);
+  if (url.pathname.startsWith("/list/")) {
+    url.searchParams.set("skip", "0");
+    url.searchParams.set("show", "2000");
+  }
+  const html = await fetchText(url.toString());
   const $ = cheerio.load(html);
   const ids: string[] = [];
+  const sections = $("dl#articles").filter(
+    (index, element) =>
+      index === 0 || /^\s*Cross submissions/i.test(
+        $(element).children("h3").first().text() || $(element).prevAll("h3").first().text(),
+      ),
+  );
 
-  $("#articles dt a[title='Abstract']").each((_, element) => {
+  sections.find("dt a[title='Abstract']").each((_, element) => {
     const id = normalizeArxivId(
       $(element).attr("id") || $(element).text() || $(element).attr("href") || "",
     );
