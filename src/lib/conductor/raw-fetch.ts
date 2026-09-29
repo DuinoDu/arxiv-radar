@@ -150,7 +150,8 @@ export async function listConductorAgents(session?: AuthSession): Promise<Conduc
       : [];
   return rawAgents.flatMap((entry) => {
     const agent = normalizeConductorAgent(entry);
-    return agent ? [agent] : [];
+    // Fire task subprocesses also register as agents; only real daemons are selectable.
+    return agent && !agent.host.startsWith("conductor-fire-") ? [agent] : [];
   });
 }
 
