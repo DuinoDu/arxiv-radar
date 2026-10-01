@@ -182,7 +182,7 @@ export async function runBackfillTag(tag) {
   const openAiConfig = {
     baseUrl: ((process.env.DEEPSEEK_BASE_URL || process.env.OPENAI_URL || "https://api.openai.com/v1").trim()).replace(/\/+$/, ""),
     apiKey: process.env.DEEPSEEK_API_KEY?.trim() || process.env.OPENAI_API_KEY?.trim(),
-    model: (hasDeepSeekConfig ? process.env.DEEPSEEK_MODEL || "deepseek-chat" : process.env.OPENAI_MODEL || "gpt-4o-mini").trim(),
+    model: (hasDeepSeekConfig ? process.env.DEEPSEEK_MODEL || "deepseek-flash" : process.env.OPENAI_MODEL || "gpt-4o-mini").trim(),
   };
   const concurrency = Math.max(1, Number(process.env.BACKFILL_CONCURRENCY || 3));
   const dryRun = process.env.BACKFILL_DRY_RUN === "1";

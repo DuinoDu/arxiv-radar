@@ -156,6 +156,32 @@ export async function listConductorAgents(session?: AuthSession): Promise<Conduc
 }
 
 /**
+ * Read a daemon's AI tool quota (`GET /api/ai-manager/quota`). The response is
+ * keyed by tool (codex / claude / kimi / copilot / dsh), each with its usage
+ * windows or an `error` when the tool isn't logged in on that daemon.
+ */
+export async function getConductorQuota(
+  agentHost: string,
+  session?: AuthSession,
+): Promise<Record<string, unknown>> {
+  const config = await getRawConductorConfig(session);
+  const url = `${config.baseUrl}/api/ai-manager/quota?agentHost=${encodeURIComponent(agentHost)}`;
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      Authorization: config.authHeader,
+    },
+    signal: AbortSignal.timeout(40_000),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw makeError(response.status, body, `quota failed (${response.status})`);
+  }
+  return body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+}
+
+/**
  * Kill a Conductor task. Maps to `PATCH /api/tasks/:id` with `{status: 'killed'}`.
  * Conductor's daemon picks up the change and starts the kill sequence
  * (response status: 'killing' typically, transitions to 'killed').
