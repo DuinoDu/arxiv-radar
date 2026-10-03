@@ -124,6 +124,9 @@ async function requestApiCompletion(prompt: string) {
       model: getScoringModel(),
       temperature: 0.15,
       max_tokens: 8192,
+      // deepseek-flash thinks by default and can spend all of max_tokens on
+      // reasoning, returning no content; scoring does not need it.
+      ...(hasDeepSeekConfig() ? { thinking: { type: "disabled" } } : {}),
       messages: [
         { role: "system", content: DATA_NOT_INSTRUCTIONS },
         { role: "user", content: prompt },

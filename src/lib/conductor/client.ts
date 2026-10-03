@@ -86,6 +86,8 @@ export async function getConductorClient(session?: AuthSession): Promise<AppClie
   const promise = connect({
       baseUrl,
       bearerToken,
+      // POST /api/tasks waits on daemon dispatch and often exceeds the 30s default.
+      timeoutMs: 120_000,
       onUnauthorized: () => {
         console.error(
           "[conductor] 401 from Conductor - token invalid or revoked?",
