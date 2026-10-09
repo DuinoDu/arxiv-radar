@@ -82,6 +82,13 @@ export async function requestConductorCompletion(candidate: ConductorLlmCandidat
       if (delta.type === "error") throw new Error(`${delta.error.code}: ${delta.error.message}`);
     }
     throw new Error("task ended without a reply");
+  } catch (error) {
+    // streamReply only sees live events, so a reply that landed while the
+    // socket was lagging is missed; it is still in the task history.
+    const { messages } = await client.tasks.history(task.id, { limit: 5 }).catch(() => ({ messages: [] }));
+    const reply = messages.findLast((message) => (message.role === "sdk" || message.role === "assistant") && message.content);
+    if (reply) return reply.content;
+    throw error;
   } finally {
     await deleteConductorTask(task.id)
       .catch(() => killConductorTask(task.id))
