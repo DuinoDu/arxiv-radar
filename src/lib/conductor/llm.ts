@@ -86,7 +86,10 @@ export async function requestConductorCompletion(candidate: ConductorLlmCandidat
     // streamReply only sees live events, so a reply that landed while the
     // socket was lagging is missed; it is still in the task history.
     const { messages } = await client.tasks.history(task.id, { limit: 5 }).catch(() => ({ messages: [] }));
-    const reply = messages.findLast((message) => (message.role === "sdk" || message.role === "assistant") && message.content);
+    const reply = messages.findLast(
+      (message) =>
+        (message.role === "sdk" || message.role === "assistant") && message.content && !message.metadata?.synthetic,
+    );
     if (reply) return reply.content;
     throw error;
   } finally {
