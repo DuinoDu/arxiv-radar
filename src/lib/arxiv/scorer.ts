@@ -149,7 +149,8 @@ async function requestApiCompletion(prompt: string) {
   return content;
 }
 
-type Completer = (prompt: string) => Promise<string>;
+/** Returns the reply and the backend that produced it. */
+type Completer = (prompt: string) => Promise<{ content: string; backend: string }>;
 
 /**
  * Picks where scoring prompts go for one run: Conductor daemon tools that still
@@ -176,10 +177,11 @@ async function createCompleter(logger?: RunLogger): Promise<{ model: string; com
       for (const candidate of candidates) {
         if ((cooldownUntil.get(candidate) ?? 0) > Date.now()) continue;
         try {
-          return await requestConductorCompletion(
+          const content = await requestConductorCompletion(
             candidate,
             `${DATA_NOT_INSTRUCTIONS}不要调用任何工具，直接回复。\n\n${prompt}`,
           );
+          return { content, backend: `conductor:${label(candidate)}` };
         } catch (error) {
           cooldownUntil.set(candidate, Date.now() + CANDIDATE_COOLDOWN_MS);
           logger?.warn(`conductor ${label(candidate)} failed: ${(error as Error).message}`);
@@ -187,7 +189,7 @@ async function createCompleter(logger?: RunLogger): Promise<{ model: string; com
       }
     }
     logger?.warn(`conductor tools unavailable; falling back to ${getScoringModel()}`);
-    return requestApiCompletion(prompt);
+    return { content: await requestApiCompletion(prompt), backend: getScoringModel() };
   };
   return { model: candidates[0] ? `conductor:${label(candidates[0])}` : getScoringModel(), complete };
 }
@@ -202,7 +204,7 @@ async function scoreBatch<T extends { id: string }>(
   articles: ArxivArticle[],
   schema: z.ZodType<T>,
 ) {
-  const content = await complete(buildPrompt(template, articles));
+  const { content, backend } = await complete(buildPrompt(template, articles));
   const raw = JSON.parse(extractJsonArray(content));
   if (!Array.isArray(raw)) {
     throw new Error("scoring model did not return a JSON array");
@@ -215,7 +217,7 @@ async function scoreBatch<T extends { id: string }>(
     const id = result.data.id.replace(/^arXiv:/i, "").replace(/v\d+$/i, "");
     if (wanted.has(id)) byId.set(id, { ...result.data, id });
   }
-  return byId;
+  return { byId, backend };
 }
 
 function chunk<T>(items: T[], size: number) {
@@ -258,12 +260,16 @@ async function scoreAll<T extends { id: string }>(
 ) {
   const scored = new Map<string, T>();
   const errors = new Map<string, string>();
+  const backends = new Map<string, string>();
 
   async function attempt(batch: ArxivArticle[], tag: string) {
     try {
-      const result = await scoreBatch(complete, template, batch, schema);
-      for (const [id, item] of result) scored.set(id, item);
-      logger?.info(`${label} ${tag}: scored ${result.size}/${batch.length}`);
+      const { byId, backend } = await scoreBatch(complete, template, batch, schema);
+      for (const [id, item] of byId) {
+        scored.set(id, item);
+        backends.set(id, backend);
+      }
+      logger?.info(`${label} ${tag}: scored ${byId.size}/${batch.length} via ${backend}`);
     } catch (error) {
       const message = (error as Error).message;
       logger?.warn(`${label} ${tag} failed: ${message}`);
@@ -292,7 +298,7 @@ async function scoreAll<T extends { id: string }>(
       errors.set(article.id, `${label}: model returned no valid item`);
     }
   }
-  return { scored, errors };
+  return { scored, errors, backends };
 }
 
 function toRelevanceDetail(item: RelevanceItem): PaperRelevanceDetail {
@@ -399,7 +405,7 @@ export async function scoreArticles(
       tagEvidence,
       tagSource,
       githubUrl: githubUrls.get(article.id) || extractGithubUrl(article.abstract),
-      model,
+      model: quality.backends.get(article.id) ?? relevance.backends.get(article.id) ?? model,
       analyzedAt: article.publishedAt ?? new Date().toISOString(),
       runId,
       relevanceScore: rel.score,
