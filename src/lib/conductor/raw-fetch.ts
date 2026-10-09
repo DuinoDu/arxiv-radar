@@ -11,20 +11,20 @@
  * Auth/base URL: reuses the same app settings the SDK client uses. This means
  * the BFF trust boundary is unchanged — the token never leaves Node.
  */
-import { createEnvAppSettings, requireConductorValue } from "@/lib/app-settings";
+import { conductorApiBaseUrl, createEnvAppSettings, requireConductorValue } from "@/lib/app-settings";
 import type { AuthSession } from "@/lib/auth/session";
 
 async function getRawConductorConfig(session?: AuthSession) {
   if (session) {
     return {
-      baseUrl: requireConductorValue(session.conductorBaseUrl, "baseUrl").replace(/\/+$/, ""),
+      baseUrl: conductorApiBaseUrl(requireConductorValue(session.conductorBaseUrl, "baseUrl")).replace(/\/+$/, ""),
       authHeader: `Bearer ${requireConductorValue(session.conductorAccessToken, "token")}`,
     };
   }
 
   const settings = createEnvAppSettings();
   return {
-    baseUrl: requireConductorValue(settings.conductor.baseUrl, "baseUrl").replace(/\/+$/, ""),
+    baseUrl: conductorApiBaseUrl(requireConductorValue(settings.conductor.baseUrl, "baseUrl")).replace(/\/+$/, ""),
     authHeader: `Bearer ${requireConductorValue(settings.conductor.token, "token")}`,
   };
 }

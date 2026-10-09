@@ -9,6 +9,7 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { connect, type AppClient } from "@love-moon/app-sdk/server";
 import {
+  conductorApiBaseUrl,
   DEFAULT_CONDUCTOR_APP_NAME,
   createEnvAppSettings,
   requireConductorValue,
@@ -46,7 +47,7 @@ export async function releaseConductorSessionClient(session: AuthSession) {
 async function getConnectionConfig(session?: AuthSession) {
   if (session) {
     return {
-      baseUrl: requireConductorValue(session.conductorBaseUrl, "baseUrl"),
+      baseUrl: conductorApiBaseUrl(requireConductorValue(session.conductorBaseUrl, "baseUrl")),
       bearerToken: requireConductorValue(session.conductorAccessToken, "token"),
       sessionScope: session.sessionId,
     };
@@ -54,7 +55,7 @@ async function getConnectionConfig(session?: AuthSession) {
 
   const settings = createEnvAppSettings();
   return {
-    baseUrl: requireConductorValue(settings.conductor.baseUrl, "baseUrl"),
+    baseUrl: conductorApiBaseUrl(requireConductorValue(settings.conductor.baseUrl, "baseUrl")),
     bearerToken: requireConductorValue(settings.conductor.token, "token"),
     sessionScope: "configured",
   };

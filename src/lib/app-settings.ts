@@ -222,3 +222,14 @@ export function requireConductorValue(value: string, key: string) {
   }
   return value;
 }
+
+/**
+ * Base URL for server-side Conductor API calls. When Conductor runs on the same
+ * host, CONDUCTOR_INTERNAL_URL (e.g. http://127.0.0.1:6152) replaces the public
+ * CONDUCTOR_BASE_URL, whose hairpin through the public IP drops connections.
+ */
+export function conductorApiBaseUrl(baseUrl: string) {
+  const internal = process.env.CONDUCTOR_INTERNAL_URL?.trim();
+  const trim = (url = "") => url.trim().replace(/\/+$/, "");
+  return internal && trim(baseUrl) === trim(process.env.CONDUCTOR_BASE_URL) ? internal : baseUrl;
+}
