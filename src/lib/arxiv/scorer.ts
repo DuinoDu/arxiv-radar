@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import {
+  deleteLeftoverScoringTasks,
   listConductorLlmCandidates,
   requestConductorCompletion,
   type ConductorLlmCandidate,
@@ -157,7 +158,9 @@ type Completer = (prompt: string) => Promise<{ content: string; backend: string 
  * have quota (most remaining first), then the paid API. A tool that fails cools
  * down for a minute; the paid API is only used after CONDUCTOR_ROUNDS rounds.
  */
-async function createCompleter(logger?: RunLogger): Promise<{ model: string; complete: Completer }> {
+async function createCompleter(
+  logger?: RunLogger,
+): Promise<{ model: string; complete: Completer; cleanup: () => Promise<void> }> {
   const candidates = await listConductorLlmCandidates().catch((error) => {
     logger?.warn(`conductor quota lookup failed: ${(error as Error).message}`);
     return [] as ConductorLlmCandidate[];
@@ -168,6 +171,11 @@ async function createCompleter(logger?: RunLogger): Promise<{ model: string; com
       ? `conductor tools with quota: ${candidates.map((c) => `${label(c)} ${c.remainingPercent}%`).join(", ")}`
       : `no conductor tool with spare quota; using ${getScoringModel()}`,
   );
+  const cleanup = async () => {
+    const removed = await deleteLeftoverScoringTasks(candidates).catch(() => 0);
+    if (removed > 0) logger?.warn(`deleted ${removed} leftover conductor scoring task(s)`);
+  };
+  await cleanup();
 
   const cooldownUntil = new Map<ConductorLlmCandidate, number>();
   const complete: Completer = async (prompt) => {
@@ -191,7 +199,7 @@ async function createCompleter(logger?: RunLogger): Promise<{ model: string; com
     logger?.warn(`conductor tools unavailable; falling back to ${getScoringModel()}`);
     return { content: await requestApiCompletion(prompt), backend: getScoringModel() };
   };
-  return { model: candidates[0] ? `conductor:${label(candidates[0])}` : getScoringModel(), complete };
+  return { model: candidates[0] ? `conductor:${label(candidates[0])}` : getScoringModel(), complete, cleanup };
 }
 
 /**
@@ -343,7 +351,7 @@ export async function scoreArticles(
     return { papers: [] as AnalyzedPaper[], failures: [] as { id: string; title: string; error: string }[] };
   }
 
-  const { model, complete } = await createCompleter(logger);
+  const { model, complete, cleanup } = await createCompleter(logger);
   logger?.info(`relevance scoring ${articles.length} paper(s) (model=${model})`);
   const relevance = await scoreAll(
     complete,
@@ -372,6 +380,8 @@ export async function scoreArticles(
     concurrency,
     logger,
   );
+
+  await cleanup();
 
   // Full text is only fetched for the top half, and only to find a GitHub link.
   const githubUrls = new Map<string, string | undefined>();

@@ -16,6 +16,7 @@ import {
 const QUOTA_TOOLS = ["codex", "claude", "kimi", "copilot"];
 const MIN_REMAINING_PERCENT = 10;
 const REPLY_IDLE_TIMEOUT_MS = 5 * 60_000;
+const SCORING_TITLE_PREFIX = "arxiv-radar scoring ";
 
 export interface ConductorLlmCandidate {
   daemonHost: string;
@@ -78,7 +79,7 @@ async function findReply(client: Awaited<ReturnType<typeof getConductorClient>>,
 /** Runs `prompt` as a throwaway task on the candidate's tool and returns the reply. */
 export async function requestConductorCompletion(candidate: ConductorLlmCandidate, prompt: string) {
   const client = await getConductorClient();
-  const title = `arxiv-radar scoring ${new Date().toISOString()} ${candidate.daemonHost}/${candidate.backendType}`;
+  const title = `${SCORING_TITLE_PREFIX}${new Date().toISOString()} ${candidate.daemonHost}/${candidate.backendType}`;
   let recovered = false;
   const task = await client.tasks
     .create({
@@ -113,8 +114,36 @@ export async function requestConductorCompletion(candidate: ConductorLlmCandidat
     if (reply) return reply;
     throw error;
   } finally {
-    await deleteConductorTask(task.id)
-      .catch(() => killConductorTask(task.id))
-      .catch(() => undefined);
+    await removeTask(task.id);
   }
+}
+
+/** Deletes a scoring task (killing it first if delete is refused); false if it is still there. */
+async function removeTask(taskId: string) {
+  return deleteConductorTask(taskId)
+    .catch(async () => {
+      await killConductorTask(taskId);
+      await deleteConductorTask(taskId);
+    })
+    .then(
+      () => true,
+      () => false,
+    );
+}
+
+/**
+ * Deletes scoring tasks left behind by earlier runs (crashes, failed deletes)
+ * so throwaway tasks never pile up on the daemons. Call when no scoring task
+ * of this app is in flight. Returns how many were removed.
+ */
+export async function deleteLeftoverScoringTasks(candidates: ConductorLlmCandidate[]) {
+  const client = await getConductorClient();
+  let removed = 0;
+  for (const projectId of new Set(candidates.map((candidate) => candidate.projectId))) {
+    const tasks = await client.tasks.list({ projectId }).catch(() => []);
+    for (const task of tasks) {
+      if (task.title.startsWith(SCORING_TITLE_PREFIX) && (await removeTask(task.id))) removed += 1;
+    }
+  }
+  return removed;
 }
