@@ -139,6 +139,9 @@ export async function fetchRecentArticleIds(
   if (url.pathname.startsWith("/list/")) {
     url.searchParams.set("skip", "0");
     url.searchParams.set("show", "2000");
+    // arXiv's CDN keeps serving the previous day's list for hours after the
+    // announcement; a unique query param forces a fetch from origin.
+    url.searchParams.set("_", String(Date.now()));
   }
   const html = await fetchText(url.toString());
   const $ = cheerio.load(html);
