@@ -280,3 +280,48 @@ export function isConductorRawError(error: unknown): error is ConductorRawError 
     typeof (error as { message?: unknown }).message === "string"
   );
 }
+
+export interface ConductorExecRun {
+  runId?: string;
+  status?: string;
+  exitCode?: number | null;
+  stdoutTail?: string;
+  stderrTail?: string;
+  error?: string;
+}
+
+/**
+ * Run a short command on a daemon's host via `POST /api/agents/:host/exec`
+ * (the API behind `conductor remote exec`). The command starts in the
+ * daemon user's home directory. Throws unless it exits 0 within `timeoutMs`.
+ */
+export async function execOnConductorDaemon(
+  daemonHost: string,
+  command: string,
+  args: string[],
+  session?: AuthSession,
+  timeoutMs = 20_000,
+): Promise<ConductorExecRun> {
+  const config = await getRawConductorConfig(session);
+  const url = `${config.baseUrl}/api/agents/${encodeURIComponent(daemonHost)}/exec`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: config.authHeader,
+    },
+    body: JSON.stringify({ command, args, timeoutMs }),
+    signal: AbortSignal.timeout(timeoutMs + 10_000),
+  });
+  const body = (await response.json().catch(() => ({}))) as ConductorExecRun;
+  if (!response.ok) {
+    throw makeError(response.status, body, `exec on ${daemonHost} failed (${response.status})`);
+  }
+  if (body.status !== "completed" || body.exitCode !== 0) {
+    const detail = (body.stderrTail || body.error || body.stdoutTail || "").trim();
+    const what = body.status === "running" ? "timed out" : `exited ${body.exitCode ?? "?"}`;
+    throw new Error(`exec on ${daemonHost} ${what}${detail ? `: ${detail}` : ""}`);
+  }
+  return body;
+}

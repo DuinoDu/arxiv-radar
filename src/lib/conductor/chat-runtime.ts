@@ -7,7 +7,14 @@ import {
   type ConductorAgentOption,
 } from "@/lib/conductor/raw-fetch";
 
-export type ChatWorkspaceSource = "agent" | "project" | "legacy-settings" | "unavailable";
+export type ChatWorkspaceSource = "agent" | "project" | "default";
+
+/**
+ * Chat workspace on a daemon that has no arxiv-radar project yet, relative to
+ * the daemon user's home. `bindArxivRadarProject` resolves `~` on the daemon
+ * itself (and creates the directory), since every host has a different $HOME.
+ */
+export const DEFAULT_CHAT_WORKSPACE_PATH = `~/ws/fires/${DEFAULT_CONDUCTOR_APP_NAME}`;
 
 export interface ChatRuntimeOptions {
   daemons: ConductorAgentOption[];
@@ -93,7 +100,6 @@ async function projectWorkspacePath(
 
 async function resolveWorkspacePath(args: {
   session: AuthSession;
-  settings: AppSettings;
   daemon?: ConductorAgentOption;
   daemonHost: string;
 }): Promise<{ workspacePath: string; workspaceSource: ChatWorkspaceSource }> {
@@ -118,15 +124,7 @@ async function resolveWorkspacePath(args: {
     };
   }
 
-  const legacyWorkspacePath = clean(args.settings.conductor.workspacePath);
-  if (legacyWorkspacePath) {
-    return {
-      workspacePath: legacyWorkspacePath,
-      workspaceSource: "legacy-settings",
-    };
-  }
-
-  return { workspacePath: "", workspaceSource: "unavailable" };
+  return { workspacePath: DEFAULT_CHAT_WORKSPACE_PATH, workspaceSource: "default" };
 }
 
 export async function readChatRuntimeOptions(
@@ -147,7 +145,6 @@ export async function readChatRuntimeOptions(
   const selectedBackendType = chooseBackendType(selectedDaemon, settings, request);
   const { workspacePath, workspaceSource } = await resolveWorkspacePath({
     session,
-    settings,
     daemon: selectedDaemon,
     daemonHost: selectedDaemonHost,
   });

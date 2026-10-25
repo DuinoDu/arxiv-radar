@@ -197,7 +197,7 @@ async function bindWithDedup(
         arxivRadar: {
           paperId,
           daemonHost,
-          workspacePath: runtimeOptions.workspacePath,
+          workspacePath: project.workspacePath || runtimeOptions.workspacePath,
         },
       },
     });

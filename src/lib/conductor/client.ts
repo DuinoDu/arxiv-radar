@@ -5,8 +5,6 @@
  * either expose one user's task stream to another or make valid tasks appear
  * missing, so browser-facing routes pass their authenticated session here.
  */
-import { promises as fs } from "node:fs";
-import { homedir } from "node:os";
 import { connect, type AppClient } from "@love-moon/app-sdk/server";
 import {
   conductorApiBaseUrl,
@@ -16,6 +14,7 @@ import {
 } from "@/lib/app-settings";
 import { readAppSettings } from "@/lib/arxiv/store";
 import type { AuthSession } from "@/lib/auth/session";
+import { execOnConductorDaemon } from "./raw-fetch";
 
 const MAX_CACHED_CLIENTS = 32;
 const cachedClients = new Map<string, Promise<AppClient>>();
@@ -111,17 +110,44 @@ interface BindArxivRadarProjectOptions {
 }
 
 /**
+ * Makes sure `workspacePath` exists on the daemon and returns it as the
+ * absolute path the daemon sees. A leading `~` means the daemon user's home,
+ * which only the daemon knows, so this runs `mkdir -p` + `pwd` there through
+ * Conductor's remote exec. Conductor itself rejects bindings to missing paths
+ * and does not expand `~`.
+ */
+async function ensureDaemonWorkspace(
+  daemonHost: string,
+  workspacePath: string,
+  session?: AuthSession,
+) {
+  const homeRelative = workspacePath === "~" || /^~[\\/]/.test(workspacePath);
+  // Relative to the daemon's home, which is where remote exec starts.
+  const target = homeRelative ? workspacePath.slice(2) || "." : workspacePath;
+  try {
+    const run = await execOnConductorDaemon(
+      daemonHost,
+      "sh",
+      ["-c", 'mkdir -p -- "$1" && cd -- "$1" && pwd', "sh", target],
+      session,
+    );
+    const resolved = (run.stdoutTail ?? "").trim().split(/\r?\n/).pop()?.trim() ?? "";
+    if (resolved.startsWith("/")) return resolved;
+    throw new Error(`unexpected output: ${resolved || "(empty)"}`);
+  } catch (err) {
+    // An absolute path (e.g. an existing project) can still be bound without
+    // exec; Conductor reports a clear error if it is really missing.
+    if (!homeRelative) return workspacePath;
+    throw new Error(
+      `无法在 daemon ${daemonHost} 上创建 chat workspace ${workspacePath}：${(err as Error).message}`,
+    );
+  }
+}
+
+/**
  * Idempotent project binding for this app. Matches Conductor's existing
- * project by (daemonHost, workspacePath); creates one on miss.
- *
- * Best-effort `mkdir -p` of the workspace path first: when the daemon
- * lives on the same host as the BFF (the common dev setup —
- * CONDUCTOR_DAEMON_HOST=m1 + this Node process running on m1), the SDK's
- * daemon-side validation requires the path to already exist, otherwise it
- * 4xx's with "Workspace path does not exist on daemon ...". Creating it
- * here removes the manual `mkdir` step. For remote-daemon deployments the
- * local mkdir is harmless (creates a useless dir on the BFF host) — the
- * remote daemon will still 4xx and the operator can provision the path.
+ * project by (daemonHost, workspacePath); creates one on miss. The workspace
+ * directory is created on the daemon first (see `ensureDaemonWorkspace`).
  */
 export async function bindArxivRadarProject(
   session?: AuthSession,
@@ -130,36 +156,20 @@ export async function bindArxivRadarProject(
   const settings = session
     ? await readAppSettings(session.user.id)
     : createEnvAppSettings();
-  const rawWorkspacePath = requireConductorValue(
-    options.workspacePath || settings.conductor.workspacePath,
-    "workspacePath",
+  const daemonHost = requireConductorValue(
+    options.daemonHost || settings.conductor.daemonHost,
+    "daemonHost",
   );
-  const workspacePath = rawWorkspacePath.startsWith("~/")
-    ? `${homedir()}${rawWorkspacePath.slice(1)}`
-    : rawWorkspacePath === "~"
-      ? homedir()
-      : rawWorkspacePath;
-
-  try {
-    await fs.mkdir(workspacePath, { recursive: true });
-  } catch (err) {
-    // Swallow + warn: if this fails for real (EACCES, path-is-a-file),
-    // the subsequent `projects.bind` call will surface a clearer error
-    // from the daemon's own validation. We never want this mkdir to mask
-    // the actual binding failure.
-    console.warn(
-      "[conductor] failed to ensure workspace path exists",
-      { workspacePath, err },
-    );
-  }
+  const workspacePath = await ensureDaemonWorkspace(
+    daemonHost,
+    requireConductorValue(options.workspacePath || settings.conductor.workspacePath, "workspacePath"),
+    session,
+  );
 
   const client = await getConductorClient(session);
   return client.projects.bind({
     name: DEFAULT_CONDUCTOR_APP_NAME,
-    daemonHost: requireConductorValue(
-      options.daemonHost || settings.conductor.daemonHost,
-      "daemonHost",
-    ),
+    daemonHost,
     workspacePath,
   });
 }
